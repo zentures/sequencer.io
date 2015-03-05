@@ -1,0 +1,49 @@
+<!DOCTYPE HTML>
+<!--
+	Ion by TEMPLATED
+	templated.co @templatedco
+	Released for free under the Creative Commons Attribution 3.0 license (templated.co/license)
+-->
+<html>
+	<head>
+		<title>{{ .Title }}: {{ .Site.Params.description }}</title>
+		<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+		<meta name="description" content="Sequence is a high performance sequential log scanner, analyzer and parser. It sequentially goes through a log message, parses out the meaningful parts, without the use regular expressions. It can achieve high performance parsing of 100,000 - 200,000 messages per second (MPS) without the need to separate parsing rules by log source type." />
+		<meta name="keywords" content="" />
+		<!--[if lte IE 8]><script src="{{ .Site.BaseUrl }}/js/html5shiv.js"></script><![endif]-->
+		<script src="{{ .Site.BaseUrl }}js/jquery.min.js"></script>
+		<script src="{{ .Site.BaseUrl }}js/skel.min.js"></script>
+		<script src="{{ .Site.BaseUrl }}js/skel-layers.min.js"></script>
+		<script src="{{ .Site.BaseUrl }}js/init.js"></script>
+		
+		<link rel="stylesheet" href="{{ .Site.BaseUrl }}css/skel.css" />
+		<link rel="stylesheet" href="{{ .Site.BaseUrl }}css/style.css" />
+		<link rel="stylesheet" href="{{ .Site.BaseUrl }}css/style-xlarge.css" />
+		<link href="//netdna.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.css" rel="stylesheet">
+
+		<script>
+			(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+			(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+			})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+			ga('create', 'UA-681691-42', 'auto');
+			ga('send', 'pageview');
+   		</script>
+	</head>
+	
+	<body id="top">
+		<!-- Header -->
+		<header id="header" class="skel-layers-fixed">
+			<h1><a href="/">sequence</a></h1>
+			<nav id="nav">
+				<ul>
+					<li><a href="/">Home</a></li>
+					<li><a href="https://github.com/trustpath/sequence">Github</span></a></li>
+					<li><a href="/manual/introduction">Manual</a></li>
+					<li><a href="http://zhen.org">Blog</a></li>
+					{{ with .Site.Params.twitter }}<li><a href="{{.}}" class="icon fa-twitter"><span class="label">Twitter</span></a></li>{{end}}
+					{{ with .Site.Params.linkedin }}<li><a href="{{.}}" class="icon fa-linkedin"><span class="label">LinkedIn</span></a></li>{{end}}
+					</ul>
+			</nav>
+		</header>

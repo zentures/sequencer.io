@@ -1,0 +1,44 @@
+		<!-- Footer -->
+		<footer id="footer">
+			<div class="container">
+				<div class="row double">
+					<div class="6u">
+						<div class="row collapse-at-2">
+							<div class="6u">
+								<h3>Projects</h3>
+								<ul class="alt">
+									<li><a href="https://github.com/surgemq/surgemq">SurgeMQ</a></li>
+									<li><a href="https://github.com/trustpath/sequence">Sequence</a></li>
+									<li><a href="https://github.com/surge">Other Cool Projects</a></li>
+								</ul>
+							</div>
+							<div class="6u">
+								<h3>Sites</h3>
+								<ul class="alt">
+									<li><a href="http://surgemq.com">SurgeMQ Blog</a></li>
+									<li><a href="http://zhen.org">Zen 3.1 Blog</a></li>
+								</ul>
+							</div>
+						</div>
+					</div>
+					<div class="6u">
+						<h2>Sequence</h2>
+						<p>Sequence is a high performance sequential log scanner, analyzer and parser. It sequentially goes through a log message, parses out the meaningful parts, without the use regular expressions. It can parse over 100,000 messages per second without the need to separate parsing rules by log source type.</p>
+						<ul class="icons">
+							{{ with .Site.Params.twitter }}<li><a href="{{.}}" class="icon fa-twitter"><span class="label">Twitter</span></a></li>{{end}}
+							{{ with .Site.Params.linkedin }}<li><a href="{{.}}" class="icon fa-linkedin"><span class="label">LinkedIn</span></a></li>{{end}}
+							{{ with .Site.Params.github }}<li><a href="{{.}}" class="icon fa-github"><span class="label">Github</span></a></li>{{end}}
+						</ul>
+					</div>
+				</div>
+				<ul class="copyright">
+					<li>&copy; {{ .Site.Copyright }}</li>
+					<li>Built by <a href="http://gohugo.io">Hugo</a></li>
+					<li>Design by <a href="http://templated.co">TEMPLATED</a></li>
+					<li>Images by <a href="http://unsplash.com">Unsplash</a></li>
+				</ul>
+			</div>
+		</footer>
+
+	</body>
+</html>

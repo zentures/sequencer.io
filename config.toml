@@ -1,0 +1,19 @@
+baseurl = "http://sequence.trustpath.com/"
+languageCode = "en-us"
+title = "Sequence"
+theme = "ion"
+copyright = "Dataence, LLC. All Rights Reserved."
+
+[Author]
+	name = "Jian Zhen"
+
+[Taxonomies]
+    tag = "tags"
+    category = "categories"
+    series = "series"
+
+[params]
+	description = "High Perfromance Log Analyzer and Parser"
+	twitter = "https://twitter.com/trustpath"
+	linkedin = "https://linkedin.com/in/zhenjl"
+	github = "https://github.com/trustpath/sequence"
