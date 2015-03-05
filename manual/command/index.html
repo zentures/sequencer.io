@@ -1,0 +1,282 @@
+<!DOCTYPE HTML>
+
+<html>
+	<head>
+		<title>Sequence Command: High Perfromance Log Analyzer and Parser</title>
+		<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+		<meta name="description" content="Sequence is a high performance sequential log scanner, analyzer and parser. It sequentially goes through a log message, parses out the meaningful parts, without the use regular expressions. It can achieve high performance parsing of 100,000 - 200,000 messages per second (MPS) without the need to separate parsing rules by log source type." />
+		<meta name="keywords" content="" />
+		
+		<script src="http://sequence.trustpath.com/js/jquery.min.js"></script>
+		<script src="http://sequence.trustpath.com/js/skel.min.js"></script>
+		<script src="http://sequence.trustpath.com/js/skel-layers.min.js"></script>
+		<script src="http://sequence.trustpath.com/js/init.js"></script>
+		
+		<link rel="stylesheet" href="http://sequence.trustpath.com/css/skel.css" />
+		<link rel="stylesheet" href="http://sequence.trustpath.com/css/style.css" />
+		<link rel="stylesheet" href="http://sequence.trustpath.com/css/style-xlarge.css" />
+		<link href="//netdna.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.css" rel="stylesheet">
+
+		<script>
+			(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+			(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+			})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+			ga('create', 'UA-681691-42', 'auto');
+			ga('send', 'pageview');
+   		</script>
+	</head>
+	
+	<body id="top">
+		
+		<header id="header" class="skel-layers-fixed">
+			<h1><a href="/">sequence</a></h1>
+			<nav id="nav">
+				<ul>
+					<li><a href="/">Home</a></li>
+					<li><a href="https://github.com/trustpath/sequence">Github</span></a></li>
+					<li><a href="/manual/introduction">Manual</a></li>
+					<li><a href="http://zhen.org">Blog</a></li>
+					<li><a href="https://twitter.com/trustpath" class="icon fa-twitter"><span class="label">Twitter</span></a></li>
+					<li><a href="https://linkedin.com/in/zhenjl" class="icon fa-linkedin"><span class="label">LinkedIn</span></a></li>
+					</ul>
+			</nav>
+		</header>
+
+
+		
+			<section id="main" class="wrapper style1">
+				<div class="container">
+					<div class="row">
+
+												<div class="3u">
+							<section>
+								<h3>Overview</h3>
+								<ul class="alt">
+									<li><a href="/manual/introduction">Introduction</a></li>
+									<li><a href="/manual/sequence">Sequence</a></li>
+									<li><a href="/manual/scanner">Scanner</a></li>
+									<li><a href="/manual/analyzer">Analyzer</a></li>
+									<li><a href="/manual/parser">Parser</a></li>
+								</ul>
+								<h3>Sequence</h3>
+								<ul class="alt">
+									<li><a href="/manual/command">Command</a></li>
+									<li><a href="/manual/library">Library</a></li>
+									<li><a href="/manual/patterns">Patterns</a></li>
+								</ul>
+								<h3>Configuration</h3>
+								<ul class="alt">
+									<li><a href="/manual/configuration">Configuration</a></li>
+									<li><a href="/manual/timeformats">Time Formats</a></li>
+									<li><a href="/manual/fields">Predefined Fields</a></li>
+									<li><a href="/manual/tokens">Token Types</a></li>
+								</ul>
+							</section>
+						</div>
+
+						<div class="8u skel-cell-important">
+							<section>
+								<h2>Sequence Command</h2>
+
+							    
+
+<p>The <code>sequence</code> command is developed to demonstrate the use of this package. You can find it in the <code>sequence</code> directory. The <code>sequence</code> command implements the <em>sequential semantic log parser</em>.</p>
+
+<pre><code>Usage:
+  sequence [command]
+
+Available Commands:
+  scan                      scan will tokenize a log file or message and output a list of tokens
+  analyze                   analyze will analyze a log file and output a list of patterns that will match all the log messages
+  parse                     parse will parse a log file and output a list of parsed tokens for each of the log messages
+  bench                     benchmark scanning or parsing of a log file, no output is provided
+  help [command]            Help about any command
+
+ Available Flags:
+  -c, --config=&quot;./sequence.toml&quot;: TOML-formatted configuration file
+  -f, --fmt=&quot;general&quot;: format of the message to tokenize, can be 'json' or 'general'
+  -h, --help=false: help for sequence
+  -i, --infile=&quot;&quot;: input file, required
+  -o, --outfile=&quot;&quot;: output file, if empty, to stdout
+  -d, --patdir=&quot;&quot;: pattern directory,, all files in directory will be used
+  -p, --patfile=&quot;&quot;: initial pattern file, optional
+
+Use &quot;sequence help [command]&quot; for more information about that command.
+</code></pre>
+
+<h3 id="scan:18f42655bc34c316ea561fdfae1d14c2">Scan</h3>
+
+<pre><code>Usage:
+  sequence scan [flags]
+
+ Available Flags:
+  -h, --help=false: help for scan
+  -m, --msg=&quot;&quot;: message to tokenize
+</code></pre>
+
+<p>Example</p>
+
+<pre><code>  $ ./sequence scan -m &quot;jan 14 10:15:56 testserver sudo:    gonner : tty=pts/3 ; pwd=/home/gonner ; user=root ; command=/bin/su - ustream&quot;
+  #   0: { Field=&quot;%funknown%&quot;, Type=&quot;%ts%&quot;, Value=&quot;jan 14 10:15:56&quot; }
+  #   1: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;testserver&quot; }
+  #   2: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;sudo&quot; }
+  #   3: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;:&quot; }
+  #   4: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;gonner&quot; }
+  #   5: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;:&quot; }
+  #   6: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;tty&quot; }
+  #   7: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;=&quot; }
+  #   8: { Field=&quot;%funknown%&quot;, Type=&quot;%string%&quot;, Value=&quot;pts/3&quot; }
+  #   9: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;;&quot; }
+  #  10: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;pwd&quot; }
+  #  11: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;=&quot; }
+  #  12: { Field=&quot;%funknown%&quot;, Type=&quot;%string%&quot;, Value=&quot;/home/gonner&quot; }
+  #  13: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;;&quot; }
+  #  14: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;user&quot; }
+  #  15: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;=&quot; }
+  #  16: { Field=&quot;%funknown%&quot;, Type=&quot;%string%&quot;, Value=&quot;root&quot; }
+  #  17: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;;&quot; }
+  #  18: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;command&quot; }
+  #  19: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;=&quot; }
+  #  20: { Field=&quot;%funknown%&quot;, Type=&quot;%string%&quot;, Value=&quot;/bin/su&quot; }
+  #  21: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;-&quot; }
+  #  22: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;ustream&quot; }
+</code></pre>
+
+<h3 id="parse:18f42655bc34c316ea561fdfae1d14c2">Parse</h3>
+
+<pre><code>Usage:
+  sequence parse [flags]
+
+ Available Flags:
+  -h, --help=false: help for parse
+  -i, --infile=&quot;&quot;: input file, required
+  -o, --outfile=&quot;&quot;: output file, if empty, to stdout
+  -d, --patdir=&quot;&quot;: pattern directory,, all files in directory will be used
+  -p, --patfile=&quot;&quot;: initial pattern file, required
+</code></pre>
+
+<p>The following command parses a file based on existing rules. Note that the
+performance number (9570.20 msgs/sec) is mostly due to reading/writing to disk.
+To get a more realistic performance number, see the benchmark section below.</p>
+
+<pre><code>  $ ./sequence parse -d ../../patterns -i ../../data/sshd.all  -o parsed.sshd
+  Parsed 212897 messages in 22.25 secs, ~ 9570.20 msgs/sec
+</code></pre>
+
+<p>This is an entry from the output file:</p>
+
+<pre><code>  Jan 15 19:39:26 jlz sshd[7778]: pam_unix(sshd:session): session opened for user jlz by (uid=0)
+  #   0: { Field=&quot;%createtime%&quot;, Type=&quot;%ts%&quot;, Value=&quot;jan 15 19:39:26&quot; }
+  #   1: { Field=&quot;%apphost%&quot;, Type=&quot;%string%&quot;, Value=&quot;jlz&quot; }
+  #   2: { Field=&quot;%appname%&quot;, Type=&quot;%string%&quot;, Value=&quot;sshd&quot; }
+  #   3: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;[&quot; }
+  #   4: { Field=&quot;%sessionid%&quot;, Type=&quot;%integer%&quot;, Value=&quot;7778&quot; }
+  #   5: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;]&quot; }
+  #   6: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;:&quot; }
+  #   7: { Field=&quot;%funknown%&quot;, Type=&quot;%string%&quot;, Value=&quot;pam_unix&quot; }
+  #   8: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;(&quot; }
+  #   9: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;sshd&quot; }
+  #  10: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;:&quot; }
+  #  11: { Field=&quot;%funknown%&quot;, Type=&quot;%string%&quot;, Value=&quot;session&quot; }
+  #  12: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;)&quot; }
+  #  13: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;:&quot; }
+  #  14: { Field=&quot;%object%&quot;, Type=&quot;%string%&quot;, Value=&quot;session&quot; }
+  #  15: { Field=&quot;%action%&quot;, Type=&quot;%string%&quot;, Value=&quot;opened&quot; }
+  #  16: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;for&quot; }
+  #  17: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;user&quot; }
+  #  18: { Field=&quot;%dstuser%&quot;, Type=&quot;%string%&quot;, Value=&quot;jlz&quot; }
+  #  19: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;by&quot; }
+  #  20: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;(&quot; }
+  #  21: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;uid&quot; }
+  #  22: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;=&quot; }
+  #  23: { Field=&quot;%funknown%&quot;, Type=&quot;%integer%&quot;, Value=&quot;0&quot; }
+  #  24: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;)&quot; }
+</code></pre>
+
+<h3 id="benchmark:18f42655bc34c316ea561fdfae1d14c2">Benchmark</h3>
+
+<pre><code>Usage:
+  sequence bench [flags]
+
+ Available Flags:
+  -c, --cpuprofile=&quot;&quot;: CPU profile filename
+  -h, --help=false: help for bench
+  -i, --infile=&quot;&quot;: input file, required
+  -d, --patdir=&quot;&quot;: pattern directory,, all files in directory will be used
+  -p, --patfile=&quot;&quot;: pattern file, required
+  -w, --workers=1: number of parsing workers
+</code></pre>
+
+<p>The following command will benchmark the parsing of two files. First file is a
+bunch of sshd logs, averaging 98 bytes per message. The second is a Cisco ASA
+log file, averaging 180 bytes per message.</p>
+
+<pre><code>$ ./sequence bench -p ../../patterns/sshd.txt -i ../../data/sshd.all
+Parsed 212897 messages in 1.69 secs, ~ 126319.27 msgs/sec
+
+$ ./sequence bench -p ../../patterns/asa.txt -i ../../data/allasa.log
+Parsed 234815 messages in 2.89 secs, ~ 81323.41 msgs/sec
+</code></pre>
+
+<p>Performance can be improved by adding more cores:</p>
+
+<pre><code>GOMAXPROCS=2 ./sequence bench -p ../../patterns/sshd.txt -i ../../data/sshd.all -w 2
+Parsed 212897 messages in 1.00 secs, ~ 212711.83 msgs/sec
+
+$ GOMAXPROCS=2 ./sequence bench -p ../../patterns/asa.txt -i ../../data/allasa.log -w 2
+Parsed 234815 messages in 1.56 secs, ~ 150769.68 msgs/sec
+</code></pre>
+
+
+							</section>
+						</div>
+					</div>
+				</div>
+			</section>
+
+		
+		<footer id="footer">
+			<div class="container">
+				<div class="row double">
+					<div class="6u">
+						<div class="row collapse-at-2">
+							<div class="6u">
+								<h3>Projects</h3>
+								<ul class="alt">
+									<li><a href="https://github.com/surgemq/surgemq">SurgeMQ</a></li>
+									<li><a href="https://github.com/trustpath/sequence">Sequence</a></li>
+									<li><a href="https://github.com/surge">Other Cool Projects</a></li>
+								</ul>
+							</div>
+							<div class="6u">
+								<h3>Sites</h3>
+								<ul class="alt">
+									<li><a href="http://surgemq.com">SurgeMQ Blog</a></li>
+									<li><a href="http://zhen.org">Zen 3.1 Blog</a></li>
+								</ul>
+							</div>
+						</div>
+					</div>
+					<div class="6u">
+						<h2>Sequence</h2>
+						<p>Sequence is a high performance sequential log scanner, analyzer and parser. It sequentially goes through a log message, parses out the meaningful parts, without the use regular expressions. It can parse over 100,000 messages per second without the need to separate parsing rules by log source type.</p>
+						<ul class="icons">
+							<li><a href="https://twitter.com/trustpath" class="icon fa-twitter"><span class="label">Twitter</span></a></li>
+							<li><a href="https://linkedin.com/in/zhenjl" class="icon fa-linkedin"><span class="label">LinkedIn</span></a></li>
+							<li><a href="https://github.com/trustpath/sequence" class="icon fa-github"><span class="label">Github</span></a></li>
+						</ul>
+					</div>
+				</div>
+				<ul class="copyright">
+					<li>&copy; Dataence, LLC. All Rights Reserved.</li>
+					<li>Built by <a href="http://gohugo.io">Hugo</a></li>
+					<li>Design by <a href="http://templated.co">TEMPLATED</a></li>
+					<li>Images by <a href="http://unsplash.com">Unsplash</a></li>
+				</ul>
+			</div>
+		</footer>
+
+	</body>
+</html>
