@@ -5,16 +5,18 @@
 				<div class="container">
 					<div class="row">
 
-						{{ partial "side-manual.html" . }}
-
-						<div class="8u skel-cell-important">
+						<div class="9u">
+							{{ range first 3 .Data.Pages }}
 							<section>
-								<h2>{{ .Title }}</h2>
+								<h2><a href="{{ .Permalink }}">{{ .Title }}</a></h2>
 
 							    {{ .Content }}
 
 							</section>
+							{{ end }}
 						</div>
+					
+						{{ partial "side-blog.html" . }}
 					</div>
 				</div>
 			</section>

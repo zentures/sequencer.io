@@ -13,7 +13,52 @@ copyright = "Dataence, LLC. All Rights Reserved."
     series = "series"
 
 [params]
-	description = "High Perfromance Log Analyzer and Parser"
+	description = "High Performance Log Analyzer and Parser"
 	twitter = "https://twitter.com/trustpath"
 	linkedin = "https://linkedin.com/in/zhenjl"
 	github = "https://github.com/trustpath/sequence"
+
+[[menu.main]]
+	name = "Home"
+	url = "/"
+	weight = 10
+
+[[menu.main]]
+	name = "Github"
+	url = "https://github.com/trustpath/sequence"
+	weight = 20
+
+[[menu.main]]
+	name = "Manual"
+	url = "/manual/introduction/"
+	weight = 30
+
+[[menu.main]]
+	name = "Blog"
+	url = "/blog/"
+	weight = 40
+
+[[menu.projects]]
+	name = "SurgeMQ"
+	url = "https://github.com/surgemq/surgemq"
+	weight = 10
+
+[[menu.projects]]
+	name = "Sequence"
+	url = "https://github.com/trustpath/sequence"
+	weight = 20
+
+[[menu.projects]]
+	name = "Others Cool Projects"
+	url = "https://github.com/surge"
+	weight = 30
+
+[[menu.sites]]
+	name = "SurgeMQ Blog"
+	url = "http://surgemq.com"
+	weight = 10
+
+[[menu.sites]]
+	name = "Zen 3.1 Blog"
+	url = "http://zhen.org"
+	weight = 20

@@ -38,10 +38,10 @@
 			<h1><a href="/">sequence</a></h1>
 			<nav id="nav">
 				<ul>
-					<li><a href="/">Home</a></li>
-					<li><a href="https://github.com/trustpath/sequence">Github</span></a></li>
-					<li><a href="/manual/introduction">Manual</a></li>
-					<li><a href="http://zhen.org">Blog</a></li>
+					{{ range .Site.Menus.main }}
+					<li><a href="{{ .Url }}">{{ .Name }}</a></li>
+					{{end}}
+
 					{{ with .Site.Params.twitter }}<li><a href="{{.}}" class="icon fa-twitter"><span class="label">Twitter</span></a></li>{{end}}
 					{{ with .Site.Params.linkedin }}<li><a href="{{.}}" class="icon fa-linkedin"><span class="label">LinkedIn</span></a></li>{{end}}
 					</ul>

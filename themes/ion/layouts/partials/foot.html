@@ -7,16 +7,17 @@
 							<div class="6u">
 								<h3>Projects</h3>
 								<ul class="alt">
-									<li><a href="https://github.com/surgemq/surgemq">SurgeMQ</a></li>
-									<li><a href="https://github.com/trustpath/sequence">Sequence</a></li>
-									<li><a href="https://github.com/surge">Other Cool Projects</a></li>
+									{{ range .Site.Menus.projects }}
+									<li><a href="{{ .Url }}">{{ .Name }}</a></li>
+									{{end}}
 								</ul>
 							</div>
 							<div class="6u">
 								<h3>Sites</h3>
 								<ul class="alt">
-									<li><a href="http://surgemq.com">SurgeMQ Blog</a></li>
-									<li><a href="http://zhen.org">Zen 3.1 Blog</a></li>
+									{{ range .Site.Menus.sites }}
+									<li><a href="{{ .Url }}">{{ .Name }}</a></li>
+									{{end}}
 								</ul>
 							</div>
 						</div>
