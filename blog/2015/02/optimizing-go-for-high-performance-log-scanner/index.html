@@ -1,0 +1,419 @@
+<!DOCTYPE HTML>
+
+<html>
+	<head>
+		<title>Optimizing Go For the High Performance Log Scanner: High Performance Log Analyzer and Parser</title>
+		<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+		<meta name="description" content="Sequence is a high performance sequential log scanner, analyzer and parser. It sequentially goes through a log message, parses out the meaningful parts, without the use regular expressions. It can achieve high performance parsing of 100,000 - 200,000 messages per second (MPS) without the need to separate parsing rules by log source type." />
+		<meta name="keywords" content="" />
+		
+		<script src="http://sequence.trustpath.com/js/jquery.min.js"></script>
+		<script src="http://sequence.trustpath.com/js/skel.min.js"></script>
+		<script src="http://sequence.trustpath.com/js/skel-layers.min.js"></script>
+		<script src="http://sequence.trustpath.com/js/init.js"></script>
+		
+		<link rel="stylesheet" href="http://sequence.trustpath.com/css/skel.css" />
+		<link rel="stylesheet" href="http://sequence.trustpath.com/css/style.css" />
+		<link rel="stylesheet" href="http://sequence.trustpath.com/css/style-xlarge.css" />
+		<link href="//netdna.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.css" rel="stylesheet">
+
+		<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-681691-42', 'auto');
+  ga('send', 'pageview');
+   		</script>
+	</head>
+	
+	<body id="top">
+		
+		<header id="header" class="skel-layers-fixed">
+			<h1><a href="/">sequence</a></h1>
+			<nav id="nav">
+				<ul>
+					
+					<li><a href="/">Home</a></li>
+					
+					<li><a href="https://github.com/trustpath/sequence">Github</a></li>
+					
+					<li><a href="/manual/introduction/">Manual</a></li>
+					
+					<li><a href="/blog/">Blog</a></li>
+					
+
+					<li><a href="https://twitter.com/trustpath" class="icon fa-twitter"><span class="label">Twitter</span></a></li>
+					<li><a href="https://linkedin.com/in/zhenjl" class="icon fa-linkedin"><span class="label">LinkedIn</span></a></li>
+					</ul>
+			</nav>
+		</header>
+
+
+		
+			<section id="main" class="wrapper style1">
+				<div class="container">
+					<div class="row">
+
+						<div class="8u skel-cell-important">
+							<section>
+								<h2>Optimizing Go For the High Performance Log Scanner</h2>
+
+							    
+
+<h3 id="tl-dr:7cafd8125150d58e303b9851cd9816dd">tl;dr</h3>
+
+<ul>
+<li>The <code>sequence</code> scanner is designed to tokenize free-form log messages.
+
+<ul>
+<li>It can scan between 200K to 500K log messages per second depending on message size and core count.</li>
+<li>It recognizes time stamps, hex strings, IP (v4, v6) addresses, URLs, MAC addresses, integers and floating point numbers.</li>
+<li>The design is based mostly on finite-state machines.</li>
+</ul></li>
+<li>The performance was achieved by the following techniques:
+
+<ol>
+<li>Go Through the String Once and Only Once</li>
+<li>Avoid Indexing into the String</li>
+<li>Reduce Heap Allocation</li>
+<li>Reduce Data Copying</li>
+<li>Mind the Data Struture</li>
+<li>Avoid Interfaces If Possible</li>
+<li>Find Ways to Short Circuit Checks</li>
+</ol></li>
+</ul>
+
+<h3 id="background:7cafd8125150d58e303b9851cd9816dd">Background</h3>
+
+<blockquote>
+<p>In computer science, lexical analysis is the process of converting a sequence of characters into a sequence of tokens, i.e. meaningful character strings. A program or function that performs lexical analysis is called a lexical analyzer, lexer, tokenizer, or scanner. - <a href="http://en.wikipedia.org/wiki/Lexical_analysis">Wikipedia</a></p>
+</blockquote>
+
+<p>One of the most critical functions in the <code>sequence</code> parser is the message tokenization. At a very high level, message tokenization means taking a single log message and breaking it into a list of tokens.</p>
+
+<h4 id="functional-requirements:7cafd8125150d58e303b9851cd9816dd">Functional Requirements</h4>
+
+<p>The challenge is knowing where the token break points are. Most log messages are free-form text, which means there&rsquo;s no common structure to them.</p>
+
+<p>As an example, the following log message can be tokenized into the sequence of tokens below. As you can see, one cannot depend on white spaces to tokenize, as the timestamp would be broken into 3 parts; nor can one use punctuations like &ldquo;;&rdquo; or &ldquo;:&ldquo;, as they would break the log mesage into useless parts.</p>
+
+<pre><code>jan 14 10:15:56 testserver sudo:    gonner : tty=pts/3 ; pwd=/home/gonner ; user=root ; command=/bin/su - ustream
+
+  #   0: { Field=&quot;%funknown%&quot;, Type=&quot;%ts%&quot;, Value=&quot;jan 14 10:15:56&quot; }
+  #   1: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;testserver&quot; }
+  #   2: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;sudo&quot; }
+  #   3: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;:&quot; }
+  #   4: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;gonner&quot; }
+  #   5: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;:&quot; }
+  #   6: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;tty&quot; }
+  #   7: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;=&quot; }
+  #   8: { Field=&quot;%funknown%&quot;, Type=&quot;%string%&quot;, Value=&quot;pts/3&quot; }
+  #   9: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;;&quot; }
+  #  10: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;pwd&quot; }
+  #  11: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;=&quot; }
+  #  12: { Field=&quot;%funknown%&quot;, Type=&quot;%string%&quot;, Value=&quot;/home/gonner&quot; }
+  #  13: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;;&quot; }
+  #  14: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;user&quot; }
+  #  15: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;=&quot; }
+  #  16: { Field=&quot;%funknown%&quot;, Type=&quot;%string%&quot;, Value=&quot;root&quot; }
+  #  17: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;;&quot; }
+  #  18: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;command&quot; }
+  #  19: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;=&quot; }
+  #  20: { Field=&quot;%funknown%&quot;, Type=&quot;%string%&quot;, Value=&quot;/bin/su&quot; }
+  #  21: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;-&quot; }
+  #  22: { Field=&quot;%funknown%&quot;, Type=&quot;%literal%&quot;, Value=&quot;ustream&quot; }
+</code></pre>
+
+<p>So a log message <em>scanner</em> or <em>tokenizer</em> (we will use these terms interchangeably) must understand common components such as timestamp, URL, hex strings, IP addresses (v4 or v6), and mac addresses, so it can break the messages into <em>meaningful components</em>.</p>
+
+<h4 id="performance-requirements:7cafd8125150d58e303b9851cd9816dd">Performance Requirements</h4>
+
+<p>From a performance requirements perspective, I really didn&rsquo;t start out with any expectations. However, after achieving 100-200K MPS for parsing (not just tokenizing), I have a strong desire to keep the performance at that level. So the more I can optimize the scanner to tokenize faster, the more head room I have for parsing.</p>
+
+<p>One may ask, who can POSSIBLY use such performance? Many organizations that I know are generating between 50-100M messages per second (MPS), that&rsquo;s only 1,200 MPS. Some larger organizations I know are generating 60GB of Bluecoat logs per day, <strong>8 years ago</strong>!! That&rsquo;s a good 3,000 MPS assuming an average of 250 bytes per message. Even if log rate grows at 15%, that&rsquo;s still only 10K MPS today.</p>
+
+<p>To run through an example, <a href="http://www.covert.io/research-papers/security/Beehive%20-%20Large-Scale%20Log%20Analysis%20for%20Detecting%20Suspicious%20Activity%20in%20Enterprise%20Networks.pdf">at EMC, 1.4 billion log messages are generated daily on average, at a rate of one terabyte a day</a>. That&rsquo;s 16,200 messages per second, and about 714 bytes per message. (Btw, what system can possibly generate messages that are 714 bytes long? That&rsquo;s crazy and completely inefficient!) These EMC numbers are from 2013, so they have likely increased by now.</p>
+
+<p>The <code>sequence</code> parser, with a single CPU core, can process about 270,000 MPS for messages averaging 98 bytes. Assuming the performance is linear compare to the message size (which is pretty close to the truth), we can process 37,000 MPS for messages averaging 714 bytes. That&rsquo;s just enough to parse the 16,2000 MPS, with a little head room to do other types of analysis or future growth.</p>
+
+<p>Obviously one can throw more hardware at solving the scale problem, but then again, why do that if you don&rsquo;t need to. Just because you have the hardware doesn&rsquo;t mean you should waste the money! Besides, there are much more interesting analytics problems your hardware can be used for than just tokenizing a message.</p>
+
+<p>In any case, I want to squeeze every oz of performance out of the scanner so I can have more time in the back to parse and analyze. So let&rsquo;s set a goal of keeping at least 200,000 MPS for 100 bytes per message (BPM).</p>
+
+<p>Yes, go ahead and tell me I shouldn&rsquo;t worry about micro-optimization, because this post is all about that. :)</p>
+
+<h3 id="sequence-scanner:7cafd8125150d58e303b9851cd9816dd">Sequence Scanner</h3>
+
+<p>In the <code>sequence</code> package, we implemented a general log message scanner, called <a href="https://github.com/strace/sequence/blob/master/scanner.go">GeneralScanner</a>. GeneralScanner is a sequential lexical analyzer that breaks a log message into a sequence of tokens. It is sequential because it goes through log message sequentially tokentizing each part of the message, without the use of regular expressions. The scanner currently recognizes time stamps, hex strings, IP (v4, v6) addresses, URLs, MAC addresses, integers and floating point numbers.</p>
+
+<p>This implementation was able to achieve both the functional and performance requirements. The following performance benchmarks are run on a single 4-core (2.8Ghz i7) MacBook Pro, although the tests were only using 1 or 2 cores. The first file is a bunch of sshd logs, averaging 98 bytes per message. The second is a Cisco ASA log file, averaging 180 bytes per message. Last is a mix of ASA, sshd and sudo logs, averaging 136 bytes per message.</p>
+
+<pre><code>  $ ./sequence bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.78 secs, ~ 272869.35 msgs/sec
+
+  $ ./sequence bench scan -i ../../data/allasa.log
+  Scanned 234815 messages in 1.43 secs, ~ 163827.61 msgs/sec
+
+  $ ./sequence bench scan -i ../../data/allasassh.log
+  Scanned 447745 messages in 2.27 secs, ~ 197258.42 msgs/sec
+</code></pre>
+
+<p>Performance can be improved by adding more cores:</p>
+
+<pre><code>  $ GOMAXPROCS=2 ./sequence bench scan -i ../../data/sshd.all -w 2
+  Scanned 212897 messages in 0.43 secs, ~ 496961.52 msgs/sec
+
+  $ GOMAXPROCS=2 ./sequenceo bench scan -i ../../data/allasa.log -w 2
+  Scanned 234815 messages in 0.80 secs, ~ 292015.98 msgs/sec
+
+  $ GOMAXPROCS=2 ./sequence bench scan -i ../../data/allasassh.log -w 2
+  Scanned 447745 messages in 1.20 secs, ~ 373170.45 msgs/sec
+</code></pre>
+
+<h4 id="concepts:7cafd8125150d58e303b9851cd9816dd">Concepts</h4>
+
+<p>To understand the scanner, you have to understand the following concepts that are part of the package.</p>
+
+<ul>
+<li><p>A <em>Token</em> is a piece of information extracted from the original log message. It is a struct that contains fields for <em>TokenType</em>, <em>FieldType</em>, and <em>Value</em>.</p></li>
+
+<li><p>A <em>TokenType</em> indicates whether the token is a literal string (one that does not change), a variable string (one that could have different values), an IPv4 or IPv6 address, a MAC address, an integer, a floating point number, or a timestamp.</p></li>
+
+<li><p>A <em>FieldType</em> indicates the semantic meaning of the token. For example, a token could be a source IP address (%srcipv4%), or a user (%srcuser% or %dstuser%), an action (%action%) or a status (%status%).</p></li>
+
+<li><p>A <em>Sequence</em> is a list of Tokens. It is the key data structure consumed and returned by the <em>Scanner</em>, <em>Analyzer</em>, and the <em>Parser</em>.</p></li>
+</ul>
+
+<p>Basically, the scanner takes a log message string, tokenizes it and returns a <em>Sequence</em> with the recognized <em>TokenType</em> marked. This <em>Sequence</em> is then fed into the analyzer or parser, and the analyzer or parser in turn returns another <em>Sequence</em> that has the recognized <em>FieldType</em> marked.</p>
+
+<h4 id="design:7cafd8125150d58e303b9851cd9816dd">Design</h4>
+
+<p>Tokenizers or scanners are usually implemented using finite-state machines. Each FSM (or FSA, finite state automata) understands a specific sequences of characters that make up a type of token.</p>
+
+<p>In the <code>sequence</code> scanner, there are three FSMs: Time, HexString and General.</p>
+
+<ul>
+<li>The Time FSM understands a list of <a href="https://github.com/strace/sequence/blob/master/time.go">time formats</a>. This list of time formats are commonly seen in log messages. It is also fairly easy to add to this list if needed.</li>
+<li>The HexString FSM is designed to understand IPv6 addresses (dead:beef:1234:5678:223:32ff:feb1:2e50 or f0f0:f::1), MAC addresses (00:04:c1:8b:d8:82), fingerprints or signatures (de:ad:be:ef:74:a6:bb:45:45:52:71:de:b2:12:34:56).</li>
+<li>The General FSM that recognizes URLs, IPv4 addresses, and any literal or strings.</li>
+</ul>
+
+<p>Each character in the log string are run through all three FSMs.</p>
+
+<ol>
+<li>If a time format is matched, that&rsquo;s what it will be returned.</li>
+<li>Next if a hex string is matched, it is also returned.
+
+<ul>
+<li>We mark anything with 5 colon characters and no successive colons like &ldquo;::&rdquo; to be a MAC address.</li>
+<li>Anything that has 7 colons and no successive colons are marked as IPv6 address.</li>
+<li>Anything that has less than 7 colons but has only 1 set of successive colons like &ldquo;::&rdquo; are marked as IPv6 address.</li>
+<li>Everything else is just a literal.</li>
+</ul></li>
+<li>Finally if neither of the above matched, we return what the general FSM has matched.
+
+<ul>
+<li>The general FSM recognizes these quote characters: &ldquo;, &lsquo; and &lt;. If these characters are encountered, then it will consider anything between the quotes to be a single token.</li>
+<li>Anything that starts with http:// or https:// are considered URLs.</li>
+<li>Anything that matches 4 integer octets are considered IP addresses.</li>
+<li>Anything that matches two integers with a dot in between are considered floats.</li>
+<li>Anything that matches just numbers are considered integers.</li>
+<li>Everything else are literals.</li>
+</ul></li>
+</ol>
+
+<h4 id="performance:7cafd8125150d58e303b9851cd9816dd">Performance</h4>
+
+<p>To achieve the performance requirements, the following rules and optimizations are followed. Some of these are Go specific, and some are general recommendations.</p>
+
+<p><strong>1. Go Through the String Once and Only Once</strong></p>
+
+<p>This is a hard requirement, otherwise we can&rsquo;t call this project a <em>sequential</em> parser. :)</p>
+
+<p>This is probably a pretty obvious technique. The more times you loop through loop through a string, the lower the performance. If you used regular expressions to parse logs, you will likely go through parts of the log message multiple times due to back tracking or look forward, etc.</p>
+
+<p>I took great pain to ensure that I don&rsquo;t need to look forward or look backward in the log string to determine the current token type, and I think the effort paid off.</p>
+
+<p>In reality though, while I am only looping through the log string once, and only once, I do run each character through three different FSMs. However, it is still much less expensive than looping through three times, each time checking a single FSM. However, the more FSMs I run the characters through, the slower it gets.</p>
+
+<p>This was apparently when I <a href="https://github.com/strace/sequence/commit/a5447814f43b4b9b7e804b14dde38e88fd53e6d0">updated the scanner to support IPv6 and hex strings</a>. I tried a couple of different approaches. First, I added an IPv6 specific FSM. So in addition to the original time, mac and general FSMs, there are now 4. That dropped performance by like 15%!!! That&rsquo;s just unacceptable.</p>
+
+<p>The second approach, which is the one I checked in, combines the MAC, IPv6 and general hex strings into a single FSM. That helped somewhat. I was able to regain about 5% of the performance hit. However, because I can no longer short circuit the MAC address check (by string length and colon positions), I was still experiencing a 8-10% hit.</p>
+
+<p>What this means is that for most tokens, instead of checking just 2 FSMs because I can short circuit the MAC check pretty early, I have to now check all 3 FSMs.</p>
+
+<p>So the more FSMs, the more comlicated the FSMs, the more performance hits there will be.</p>
+
+<p><strong>2. Avoid Indexing into the String</strong></p>
+
+<p>This is really a Go-specific recommentation. Each time you index into a slice or string, Go will perform bounds checking for you, which means there&rsquo;s extra operations it&rsquo;s doing, and also means lower performance. As an example, here are results from two benchmark runs. The first is with bounds checking enabled, which is default Go behavior. The second disables bounds checking.</p>
+
+<pre><code>  $ go run ./sequence.go bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.79 secs, ~ 268673.91 msgs/sec
+
+  $ go run -gcflags=-B ./sequence.go bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.77 secs, ~ 277479.58 msgs/sec
+</code></pre>
+
+<p>The performance difference is approximately 3.5%! However, while it&rsquo;s fun to see the difference, I would never recommend disable bounds checking in production. So the next best thing is to remove as many operations that index into a string or slice as possible. Specifically:</p>
+
+<ol>
+<li>Use &ldquo;range&rdquo; in the loops, e.g. <code>for i, r := range str</code> instead of <code>for i := 0; i &lt; len(str); i++ { if str[i] == ... }</code></li>
+<li>If you are checking a specific character in the string/slice multiple times, assign it to a variable and use the variable instead. This will avoid indexing into the slice/string multiple times.</li>
+<li>If there are multiple conditions in an <code>if</code> statement, try to move (or add) the non-indexing checks to the front of the statement. This sometimes will help short circuit the checks and avoid the slice-indexing checks.</li>
+</ol>
+
+<p>One might question if this is worth optimizing, but like I said, I am trying to squeeze every oz of performance so 3.5% is still good for me. Unfornately I do know I won&rsquo;t get 3.5% since I can&rsquo;t remove every operation that index into slice/string.</p>
+
+<p><strong>3. Reduce Heap Allocation</strong></p>
+
+<p>This is true for all languages (where you can have some control of stack vs heap allocation), and it&rsquo;s even more true in Go. Mainly in Go, if you allocate a new slice, Go will &ldquo;zero&rdquo; out the allocated memory. This is great from a safety perspective, but it does add to the overhead.</p>
+
+<p>As an example, in the scanner I originally allocated a new <em>Sequence</em> (slice of <em>Token</em>) for every new message. However, when i changed it to re-use the existing slice, the performance increased by over 10%!</p>
+
+<pre><code>  $ go run ./sequence.go bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.87 secs, ~ 246027.12 msgs/sec
+
+  $ go run ./sequence.go bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.77 secs, ~ 275038.83 msgs/sec
+</code></pre>
+
+<p>The best thing to do is to run Go&rsquo;s builtin CPU profiler, and look at the numbers for Go internal functions such as <code>runtime.makeslice</code>, <code>runtime.markscan</code>, and <code>runtime.memclr</code>. Large percentages and numbers for these internal functions are dead giveaway that you are probably allocating too much stuff on the heap.</p>
+
+<p>I religiously go through the SVGs generated from the Go profiler to help me identify hot spots where I can optimize.</p>
+
+<p>Here&rsquo;s also a couple of tips I picked up from the <a href="https://groups.google.com/forum/#!topic/golang-nuts/baU4PZFyBQQ">go-nuts mailing list</a>:</p>
+
+<ul>
+<li>Maps are bad&ndash;even if they&rsquo;re storing integers or other non-pointer structs. The implementation appears to have lots of pointers inside which must be evaluated and followed during mark/sweep GC.  Using structures with pointers magnifies the expense.</li>
+<li>Slices are surprisingly bad (including strings and substrings of existing strings). A slice is a pointer to the backing array with a length and capacity. It would appear that the internal pointer that causes the trouble because GC wants to inspect it.</li>
+</ul>
+
+<p><strong>4. Reduce Data Copying</strong></p>
+
+<p>Data copying is expensive. It means the run time has to allocate new space and copy the data over. It&rsquo;s even more expensive when you can&rsquo;t have do <code>memcpy</code> of a slice in Go like you can in C. Again, direct memory copying is not Go&rsquo;s design goal. It is also much safer if you can prevent users from playing with memory directly too much. However, it is still a good idea to avoid any copying of data, whether it&rsquo;s string or slice.</p>
+
+<p>As much as I can, I try to do in place processing of the data. Every <em>Sequence</em> is worked on locally and I try not to copy <em>Sequence</em> or string unless I absolutely have to.</p>
+
+<p>Unfortunately I don&rsquo;t have any comparison numbers for this one, because I learned from <a href="http://zhen.org/blog/surgemq-mqtt-message-queue-750k-mps/">previous projects</a> that I should avoid copying as much as possible.</p>
+
+<p><strong>5. Mind the Data Struture</strong></p>
+
+<p>If there&rsquo;s one thing I learned over the past year, is to use the right data structure for the right job. I&rsquo;ve written about other data structures such as <a href="http://zhen.org/blog/ring-buffer-variable-length-low-latency-disruptor-style/">ring buffer</a>, <a href="http://zhen.org/blog/benchmarking-bloom-filters-and-hash-functions-in-go/">bloom filters</a>, and <a href="http://zhen.org/blog/go-skiplist/">skiplist</a> before.</p>
+
+<p>However, <a href="http://en.wikipedia.org/wiki/Finite-state_machine">finite-state automata or machine</a> is my latest love and I&rsquo;ve been using it at various projects such as my <a href="http://zhen.org/blog/generating-porter2-fsm-for-fun-and-performance/">porter2</a> and <a href="https://github.com/surge/xparse/tree/master/etld">effective TLD</a>. Ok, technical FSM itself is not a data structure and can be implemented in different ways. In the <code>sequence</code> project, I used both a tree representation as well as a bunch of switch-case statements. For the <a href="http://zhen.org/blog/generating-porter2-fsm-for-fun-and-performance/">porter2</a> FSMs, I used switch-case to implement them.</p>
+
+<p>Interestingly, swtich-case doesn&rsquo;t always win. I tested the time FSM using both tree and switch-case implementations, and the tree actually won out. (Below, 1 is tree, 2 is switch-case.) So guess which one is checked in?</p>
+
+<pre><code>BenchmarkTimeStep1   2000000         696 ns/op
+BenchmarkTimeStep2   2000000         772 ns/op
+</code></pre>
+
+<p>Writing this actually reminds me that in the parser, I am currently using a tree to parse the sequences. While parsing, there could be multiple paths that the sequence will match. Currently I walk all the matched paths fully, before choosing one that has the highest score. What I should do is to do a weighted walk, and always walk the highest score nodes first. If at the end I get a perfect score, I can just return that path and not have to walk the other paths. (Note to self, more parser optimization to do).</p>
+
+<p><strong>6. Avoid Interfaces If Possible</strong></p>
+
+<p>This is probably not a great advice to give to Go developers. Interface is probably one of the best Go features and everyone should learn to use it. However, if you want high performane, avoid interfaces as it provides additional layers of indirection. I don&rsquo;t have performance numbers for the <code>sequence</code> project since I tried to avoid interfaces in high performance areas from the start. However, previous in the <a href="http://zhen.org/blog/ring-buffer-variable-length-low-latency-disruptor-style/">ring buffer</a> project, the version that uses interface is 140% slower than the version that didn&rsquo;t.</p>
+
+<p>I don&rsquo;t have the direct link but someone on the go-nuts mailing list also said:</p>
+
+<blockquote>
+<p>If you really want high performance, I would suggest avoiding interfaces and, in general, function calls like the plague, since they are quite expensive in Go (compared to C). We have implemented basically the same for our internal web framework (to be released some day) and we&rsquo;re almost 4x faster than encoding/json without doing too much optimization. I&rsquo;m sure we could make this even faster.</p>
+</blockquote>
+
+<p><strong>7. Find Ways to Short Circuit Checks</strong></p>
+
+<p>Find ways to quickly eliminate the need to run a section of the code has been tremendously helpful to improve performance. For example, here are a couple of place where I tried to do that.</p>
+
+<p>In <a href="https://github.com/strace/sequence/blob/master/scanner.go#L223">this first example</a>, I simply added <code>l == 1</code> before the actual equality check of the string values. The first output is before the add, the second is after. The difference is about 2% performance increase.</p>
+
+<pre><code>  $ go run ./sequence.go bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.78 secs, ~ 272303.79 msgs/sec
+
+  $ go run ./sequence.go bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.76 secs, ~ 278433.34 msgs/sec
+</code></pre>
+
+<p>In <a href="https://github.com/strace/sequence/blob/master/scanner.go#L282">the second example</a>, I added a quick check to make sure the remaining string is at least as long as the shortest time format. If there&rsquo;s not enough characters, then don&rsquo;t run the time FSM. The performance difference is about 2.5%.</p>
+
+<pre><code>  $ go run ./sequence.go bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.78 secs, ~ 272059.04 msgs/sec
+
+  $ go run ./sequence.go bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.76 secs, ~ 279388.47 msgs/sec
+</code></pre>
+
+<p>So by simply adding a couple of checks, I&rsquo;ve increased perfromance by close to 5%.</p>
+
+<h3 id="conclusion:7cafd8125150d58e303b9851cd9816dd">Conclusion</h3>
+
+<p>At this point I think I have squeezed every bit of performance out of the scanner, to the extend of my knowledge. It&rsquo;s performing relatively well and it&rsquo;s given the parser plenty of head room to do other things. I hope some of these lessons are helpful to whatever you are doing.</p>
+
+<p>Feel free to take a look at the <a href="https://github.com/strace/sequence">sequence</a> project and try it out if you. If you have any issues/comments, please don&rsquo;t hestiate to <a href="https://github.com/strace/sequence/issues">open a github issue</a>.</p>
+
+
+							</section>
+						</div>
+					
+												<div class="3u">
+							<section>
+								<h3>Previous Posts</h3>
+								<ul class="alt">
+									
+					</div>
+				</div>
+			</section>
+
+		
+		<footer id="footer">
+			<div class="container">
+				<div class="row double">
+					<div class="6u">
+						<div class="row collapse-at-2">
+							<div class="6u">
+								<h3>Projects</h3>
+								<ul class="alt">
+									
+									<li><a href="https://github.com/surgemq/surgemq">SurgeMQ</a></li>
+									
+									<li><a href="https://github.com/trustpath/sequence">Sequence</a></li>
+									
+									<li><a href="https://github.com/surge">Others Cool Projects</a></li>
+									
+								</ul>
+							</div>
+							<div class="6u">
+								<h3>Sites</h3>
+								<ul class="alt">
+									
+									<li><a href="http://surgemq.com">SurgeMQ Blog</a></li>
+									
+									<li><a href="http://zhen.org">Zen 3.1 Blog</a></li>
+									
+								</ul>
+							</div>
+						</div>
+					</div>
+					<div class="6u">
+						<h2>Sequence</h2>
+						<p>Sequence is a high performance sequential log scanner, analyzer and parser. It sequentially goes through a log message, parses out the meaningful parts, without the use regular expressions. It can parse over 100,000 messages per second without the need to separate parsing rules by log source type.</p>
+						<ul class="icons">
+							<li><a href="https://twitter.com/trustpath" class="icon fa-twitter"><span class="label">Twitter</span></a></li>
+							<li><a href="https://linkedin.com/in/zhenjl" class="icon fa-linkedin"><span class="label">LinkedIn</span></a></li>
+							<li><a href="https://github.com/trustpath/sequence" class="icon fa-github"><span class="label">Github</span></a></li>
+						</ul>
+					</div>
+				</div>
+				<ul class="copyright">
+					<li>&copy; Dataence, LLC. All Rights Reserved.</li>
+					<li>Built by <a href="http://gohugo.io">Hugo</a></li>
+					<li>Design by <a href="http://templated.co">TEMPLATED</a></li>
+					<li>Images by <a href="http://unsplash.com">Unsplash</a></li>
+				</ul>
+			</div>
+		</footer>
+
+	</body>
+</html>
