@@ -8,17 +8,7 @@
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/analyzer/</loc>
-    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
-  </url>
-  
-  <url>
     <loc>http://sequence.trustpath.com/manual/command/</loc>
-    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://sequence.trustpath.com/manual/configuration/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
@@ -28,12 +18,12 @@
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/parser/</loc>
+    <loc>http://sequence.trustpath.com/manual/configuration/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/introduction/</loc>
+    <loc>http://sequence.trustpath.com/manual/analyzer/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
@@ -43,12 +33,12 @@
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/scanner/</loc>
+    <loc>http://sequence.trustpath.com/manual/introduction/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/timeformats/</loc>
+    <loc>http://sequence.trustpath.com/manual/parser/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
@@ -58,7 +48,17 @@
   </url>
   
   <url>
+    <loc>http://sequence.trustpath.com/manual/scanner/</loc>
+    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
+  </url>
+  
+  <url>
     <loc>http://sequence.trustpath.com/manual/sequence/</loc>
+    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://sequence.trustpath.com/manual/timeformats/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
