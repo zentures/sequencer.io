@@ -2,73 +2,73 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
-    <loc>http://sequence.trustpath.com/</loc>
+    <loc>http://sequencer.io/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
     <priority>0</priority>
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/command/</loc>
+    <loc>http://sequencer.io/manual/analyzer/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/fields/</loc>
+    <loc>http://sequencer.io/manual/command/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/configuration/</loc>
+    <loc>http://sequencer.io/manual/fields/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/analyzer/</loc>
+    <loc>http://sequencer.io/manual/configuration/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/library/</loc>
+    <loc>http://sequencer.io/manual/introduction/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/introduction/</loc>
+    <loc>http://sequencer.io/manual/library/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/parser/</loc>
+    <loc>http://sequencer.io/manual/parser/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/patterns/</loc>
+    <loc>http://sequencer.io/manual/scanner/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/scanner/</loc>
+    <loc>http://sequencer.io/manual/patterns/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/sequence/</loc>
+    <loc>http://sequencer.io/manual/timeformats/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/timeformats/</loc>
+    <loc>http://sequencer.io/manual/sequence/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/manual/tokens/</loc>
+    <loc>http://sequencer.io/manual/tokens/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequence.trustpath.com/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</loc>
+    <loc>http://sequencer.io/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</loc>
     <lastmod>2015-02-13T01:03:08-08:00</lastmod>
   </url>
   
