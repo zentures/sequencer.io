@@ -13,22 +13,17 @@
   </url>
   
   <url>
+    <loc>http://sequencer.io/manual/configuration/</loc>
+    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
+  </url>
+  
+  <url>
     <loc>http://sequencer.io/manual/command/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
     <loc>http://sequencer.io/manual/fields/</loc>
-    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://sequencer.io/manual/configuration/</loc>
-    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://sequencer.io/manual/introduction/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
@@ -43,7 +38,7 @@
   </url>
   
   <url>
-    <loc>http://sequencer.io/manual/scanner/</loc>
+    <loc>http://sequencer.io/manual/introduction/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
@@ -53,7 +48,12 @@
   </url>
   
   <url>
-    <loc>http://sequencer.io/manual/timeformats/</loc>
+    <loc>http://sequencer.io/manual/tokens/</loc>
+    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://sequencer.io/manual/scanner/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
@@ -63,7 +63,7 @@
   </url>
   
   <url>
-    <loc>http://sequencer.io/manual/tokens/</loc>
+    <loc>http://sequencer.io/manual/timeformats/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
