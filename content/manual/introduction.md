@@ -1,6 +1,9 @@
 +++
 date = "2015-02-28T18:48:24-08:00"
 title = "Introduction"
+weight = 10
+series_weight = 10
+series = [ "overview" ]
 +++
 
 <a href="#" class="image fit"><img src="/images/pic05.jpg" alt="Obligatory Log Picture" /></a>

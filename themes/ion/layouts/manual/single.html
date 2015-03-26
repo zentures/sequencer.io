@@ -13,6 +13,32 @@
 
 							    {{ .Content }}
 
+							    <div style="text-align:center;margin-bottom:2em">
+							    {{ if .Prev }}
+							    &lt; <a href="{{.Prev.Permalink}}">{{ .Prev.Title }}</a></li>
+							    {{ end }}
+							    &nbsp;
+							    &nbsp;
+							    &nbsp;
+							    &nbsp;
+							    &nbsp;
+							    &nbsp;
+							    &nbsp;
+							    &nbsp;
+							    &nbsp;
+							    &nbsp;
+							    &nbsp;
+							    &nbsp;
+							    &nbsp;
+							    &nbsp;
+							    &nbsp;
+							    {{ if .Next }}
+							    <a href="{{.Next.Permalink}}">{{ .Next.Title }}</a> &gt;</li>
+							    {{ end }}
+							    </div>
+
+								{{ partial "disqus.html" . }}
+
 							</section>
 						</div>
 					</div>

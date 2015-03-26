@@ -1,6 +1,9 @@
 +++
 date = "2015-02-28T18:48:24-08:00"
 title = "Time Formats"
+weight = 100
+series_weight = 20
+series = [ "configuration" ]
 +++
 
 <a href="#" class="image fit"><img src="/images/pic06.jpg" alt="" /></a>

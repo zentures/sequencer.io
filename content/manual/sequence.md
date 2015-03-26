@@ -1,6 +1,9 @@
 +++
 date = "2015-02-28T18:48:24-08:00"
-title = "Sequence: A New Approach"
+title = "Sequence"
+weight = 20
+series_weight = 20
+series = [ "overview" ]
 +++
 
 <a href="#" class="image fit"><img src="/images/banner2.jpg" alt="" /></a>

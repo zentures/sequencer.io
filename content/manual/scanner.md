@@ -1,6 +1,9 @@
 +++
 date = "2015-02-28T18:48:24-08:00"
 title = "Scanner"
+weight = 30
+series_weight = 30
+series = [ "overview" ]
 +++
 
 > In computer science, lexical analysis is the process of converting a sequence of characters into a sequence of tokens, i.e. meaningful character strings. A program or function that performs lexical analysis is called a lexical analyzer, lexer, tokenizer, or scanner. - [Wikipedia](http://en.wikipedia.org/wiki/Lexical_analysis)

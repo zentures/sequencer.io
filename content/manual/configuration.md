@@ -1,6 +1,9 @@
 +++
 date = "2015-02-28T18:48:24-08:00"
 title = "Configuration"
+weight = 90
+series_weight = 10
+series = [ "configuration" ]
 +++
 
 ```

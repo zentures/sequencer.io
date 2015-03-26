@@ -1,4 +1,4 @@
-baseurl = "http://sequence.trustpath.com/"
+baseurl = "http://sequencer.io/"
 languageCode = "en-us"
 title = "Sequence"
 theme = "ion"
@@ -17,6 +17,7 @@ copyright = "Dataence, LLC. All Rights Reserved."
 	twitter = "https://twitter.com/trustpath"
 	linkedin = "https://linkedin.com/in/zhenjl"
 	github = "https://github.com/trustpath/sequence"
+	disqus = "sequencer"
 
 [[menu.main]]
 	name = "Home"

@@ -1,6 +1,9 @@
 +++
 date = "2015-02-28T18:48:24-08:00"
 title = "Token Types"
+weight = 120
+series_weight = 30
+series = [ "configuration" ]
 +++
 
 The `sequence` _scanner_ will attempt to automatically recognize the following token types. 

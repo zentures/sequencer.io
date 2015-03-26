@@ -2,24 +2,21 @@
 							<section>
 								<h3>Overview</h3>
 								<ul class="alt">
-									<li><a href="/manual/introduction">Introduction</a></li>
-									<li><a href="/manual/sequence">Sequence</a></li>
-									<li><a href="/manual/scanner">Scanner</a></li>
-									<li><a href="/manual/analyzer">Analyzer</a></li>
-									<li><a href="/manual/parser">Parser</a></li>
+								{{ range .Site.Taxonomies.series.overview.Pages }}
+									<li><a href="{{ .Permalink }}">{{ .LinkTitle }}</a> </li>
+								{{ end }}
 								</ul>
 								<h3>Sequence</h3>
 								<ul class="alt">
-									<li><a href="/manual/command">Command</a></li>
-									<li><a href="/manual/library">Library</a></li>
-									<li><a href="/manual/patterns">Patterns</a></li>
+								{{ range .Site.Taxonomies.series.sequence.Pages }}
+									<li><a href="{{ .Permalink }}">{{ .LinkTitle }}</a> </li>
+								{{ end }}
 								</ul>
 								<h3>Configuration</h3>
 								<ul class="alt">
-									<li><a href="/manual/configuration">Configuration</a></li>
-									<li><a href="/manual/timeformats">Time Formats</a></li>
-									<li><a href="/manual/fields">Predefined Fields</a></li>
-									<li><a href="/manual/tokens">Token Types</a></li>
+								{{ range .Site.Taxonomies.series.configuration.Pages }}
+									<li><a href="{{ .Permalink }}">{{ .LinkTitle }}</a> </li>
+								{{ end }}
 								</ul>
 							</section>
 						</div>

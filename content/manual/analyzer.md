@@ -1,6 +1,9 @@
 +++
 date = "2015-02-28T18:48:24-08:00"
 title = "Analyzer"
+series = [ "overview" ]
+weight = 40
+series_weight = 40
 +++
 
 <a href="#" class="image fit"><img src="/images/pic07.jpg" alt="" /></a>
