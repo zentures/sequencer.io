@@ -3,57 +3,17 @@
   
   <url>
     <loc>http://sequencer.io/</loc>
-    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
+    <lastmod>2015-02-13T01:03:08-08:00</lastmod>
     <priority>0</priority>
   </url>
   
   <url>
-    <loc>http://sequencer.io/manual/analyzer/</loc>
-    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://sequencer.io/manual/configuration/</loc>
-    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://sequencer.io/manual/command/</loc>
-    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://sequencer.io/manual/fields/</loc>
-    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://sequencer.io/manual/library/</loc>
-    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://sequencer.io/manual/parser/</loc>
-    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
+    <loc>http://sequencer.io/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</loc>
+    <lastmod>2015-02-13T01:03:08-08:00</lastmod>
   </url>
   
   <url>
     <loc>http://sequencer.io/manual/introduction/</loc>
-    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://sequencer.io/manual/patterns/</loc>
-    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://sequencer.io/manual/tokens/</loc>
-    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://sequencer.io/manual/scanner/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
@@ -63,13 +23,53 @@
   </url>
   
   <url>
+    <loc>http://sequencer.io/manual/scanner/</loc>
+    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://sequencer.io/manual/analyzer/</loc>
+    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://sequencer.io/manual/parser/</loc>
+    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://sequencer.io/manual/command/</loc>
+    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://sequencer.io/manual/library/</loc>
+    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://sequencer.io/manual/patterns/</loc>
+    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://sequencer.io/manual/configuration/</loc>
+    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
+  </url>
+  
+  <url>
     <loc>http://sequencer.io/manual/timeformats/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequencer.io/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</loc>
-    <lastmod>2015-02-13T01:03:08-08:00</lastmod>
+    <loc>http://sequencer.io/manual/fields/</loc>
+    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://sequencer.io/manual/tokens/</loc>
+    <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
 </urlset>

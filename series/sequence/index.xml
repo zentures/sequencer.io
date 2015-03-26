@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Sequence on Sequence</title>
+    <link>http://sequencer.io/series/sequence/</link>
+    <description>Recent content in Sequence on Sequence</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <copyright>Dataence, LLC. All Rights Reserved.</copyright>
+    <lastBuildDate>Sat, 28 Feb 2015 18:48:24 -0800</lastBuildDate>
+    <atom:link href="http://sequencer.io/series/sequence/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>Command</title>
+      <link>http://sequencer.io/manual/command/</link>
+      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
+      
+      <guid>http://sequencer.io/manual/command/</guid>
+      <description>
+
+&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; command is developed to demonstrate the use of this package. You can find it in the &lt;code&gt;sequence&lt;/code&gt; directory. The &lt;code&gt;sequence&lt;/code&gt; command implements the &lt;em&gt;sequential semantic log parser&lt;/em&gt;.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;Usage:
+  sequence [command]
+
+Available Commands:
+  scan                      scan will tokenize a log file or message and output a list of tokens
+  analyze                   analyze will analyze a log file and output a list of patterns that will match all the log messages
+  parse                     parse will parse a log file and output a list of parsed tokens for each of the log messages
+  bench                     benchmark scanning or parsing of a log file, no output is provided
+  help [command]            Help about any command
+
+ Available Flags:
+  -c, --config=&amp;quot;./sequence.toml&amp;quot;: TOML-formatted configuration file
+  -f, --fmt=&amp;quot;general&amp;quot;: format of the message to tokenize, can be &#39;json&#39; or &#39;general&#39;
+  -h, --help=false: help for sequence
+  -i, --infile=&amp;quot;&amp;quot;: input file, required
+  -o, --outfile=&amp;quot;&amp;quot;: output file, if empty, to stdout
+  -d, --patdir=&amp;quot;&amp;quot;: pattern directory,, all files in directory will be used
+  -p, --patfile=&amp;quot;&amp;quot;: initial pattern file, optional
+
+Use &amp;quot;sequence help [command]&amp;quot; for more information about that command.
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;scan:18f42655bc34c316ea561fdfae1d14c2&#34;&gt;Scan&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code&gt;Usage:
+  sequence scan [flags]
+
+ Available Flags:
+  -h, --help=false: help for scan
+  -m, --msg=&amp;quot;&amp;quot;: message to tokenize
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Example&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  $ ./sequence scan -m &amp;quot;jan 14 10:15:56 testserver sudo:    gonner : tty=pts/3 ; pwd=/home/gonner ; user=root ; command=/bin/su - ustream&amp;quot;
+  #   0: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%ts%&amp;quot;, Value=&amp;quot;jan 14 10:15:56&amp;quot; }
+  #   1: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;testserver&amp;quot; }
+  #   2: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;sudo&amp;quot; }
+  #   3: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
+  #   4: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;gonner&amp;quot; }
+  #   5: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
+  #   6: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;tty&amp;quot; }
+  #   7: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #   8: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;pts/3&amp;quot; }
+  #   9: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;;&amp;quot; }
+  #  10: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;pwd&amp;quot; }
+  #  11: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  12: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;/home/gonner&amp;quot; }
+  #  13: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;;&amp;quot; }
+  #  14: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;user&amp;quot; }
+  #  15: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  16: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;root&amp;quot; }
+  #  17: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;;&amp;quot; }
+  #  18: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;command&amp;quot; }
+  #  19: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  20: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;/bin/su&amp;quot; }
+  #  21: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;-&amp;quot; }
+  #  22: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;ustream&amp;quot; }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;parse:18f42655bc34c316ea561fdfae1d14c2&#34;&gt;Parse&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code&gt;Usage:
+  sequence parse [flags]
+
+ Available Flags:
+  -h, --help=false: help for parse
+  -i, --infile=&amp;quot;&amp;quot;: input file, required
+  -o, --outfile=&amp;quot;&amp;quot;: output file, if empty, to stdout
+  -d, --patdir=&amp;quot;&amp;quot;: pattern directory,, all files in directory will be used
+  -p, --patfile=&amp;quot;&amp;quot;: initial pattern file, required
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The following command parses a file based on existing rules. Note that the
+performance number (9570.20 msgs/sec) is mostly due to reading/writing to disk.
+To get a more realistic performance number, see the benchmark section below.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  $ ./sequence parse -d ../../patterns -i ../../data/sshd.all  -o parsed.sshd
+  Parsed 212897 messages in 22.25 secs, ~ 9570.20 msgs/sec
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This is an entry from the output file:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  Jan 15 19:39:26 jlz sshd[7778]: pam_unix(sshd:session): session opened for user jlz by (uid=0)
+  #   0: { Field=&amp;quot;%createtime%&amp;quot;, Type=&amp;quot;%ts%&amp;quot;, Value=&amp;quot;jan 15 19:39:26&amp;quot; }
+  #   1: { Field=&amp;quot;%apphost%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;jlz&amp;quot; }
+  #   2: { Field=&amp;quot;%appname%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;sshd&amp;quot; }
+  #   3: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;[&amp;quot; }
+  #   4: { Field=&amp;quot;%sessionid%&amp;quot;, Type=&amp;quot;%integer%&amp;quot;, Value=&amp;quot;7778&amp;quot; }
+  #   5: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;]&amp;quot; }
+  #   6: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
+  #   7: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;pam_unix&amp;quot; }
+  #   8: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;(&amp;quot; }
+  #   9: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;sshd&amp;quot; }
+  #  10: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
+  #  11: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;session&amp;quot; }
+  #  12: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;)&amp;quot; }
+  #  13: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
+  #  14: { Field=&amp;quot;%object%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;session&amp;quot; }
+  #  15: { Field=&amp;quot;%action%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;opened&amp;quot; }
+  #  16: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;for&amp;quot; }
+  #  17: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;user&amp;quot; }
+  #  18: { Field=&amp;quot;%dstuser%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;jlz&amp;quot; }
+  #  19: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;by&amp;quot; }
+  #  20: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;(&amp;quot; }
+  #  21: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;uid&amp;quot; }
+  #  22: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  23: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%integer%&amp;quot;, Value=&amp;quot;0&amp;quot; }
+  #  24: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;)&amp;quot; }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;benchmark:18f42655bc34c316ea561fdfae1d14c2&#34;&gt;Benchmark&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code&gt;Usage:
+  sequence bench [flags]
+
+ Available Flags:
+  -c, --cpuprofile=&amp;quot;&amp;quot;: CPU profile filename
+  -h, --help=false: help for bench
+  -i, --infile=&amp;quot;&amp;quot;: input file, required
+  -d, --patdir=&amp;quot;&amp;quot;: pattern directory,, all files in directory will be used
+  -p, --patfile=&amp;quot;&amp;quot;: pattern file, required
+  -w, --workers=1: number of parsing workers
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The following command will benchmark the parsing of two files. First file is a
+bunch of sshd logs, averaging 98 bytes per message. The second is a Cisco ASA
+log file, averaging 180 bytes per message.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;$ ./sequence bench -p ../../patterns/sshd.txt -i ../../data/sshd.all
+Parsed 212897 messages in 1.69 secs, ~ 126319.27 msgs/sec
+
+$ ./sequence bench -p ../../patterns/asa.txt -i ../../data/allasa.log
+Parsed 234815 messages in 2.89 secs, ~ 81323.41 msgs/sec
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Performance can be improved by adding more cores:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;GOMAXPROCS=2 ./sequence bench -p ../../patterns/sshd.txt -i ../../data/sshd.all -w 2
+Parsed 212897 messages in 1.00 secs, ~ 212711.83 msgs/sec
+
+$ GOMAXPROCS=2 ./sequence bench -p ../../patterns/asa.txt -i ../../data/allasa.log -w 2
+Parsed 234815 messages in 1.56 secs, ~ 150769.68 msgs/sec
+&lt;/code&gt;&lt;/pre&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Library</title>
+      <link>http://sequencer.io/manual/library/</link>
+      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
+      
+      <guid>http://sequencer.io/manual/library/</guid>
+      <description>&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;a href=&#34;https://github.com/trustpath/sequence&#34;&gt;library&lt;/a&gt; implements the concepts described in this manual.&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Patterns</title>
+      <link>http://sequencer.io/manual/patterns/</link>
+      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
+      
+      <guid>http://sequencer.io/manual/patterns/</guid>
+      <description>
+
+&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic08.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;parser&lt;/em&gt; does not use regular expression. In fact, it won&amp;rsquo;t understand any regular expression in the patterns even if you put them there. What it does recognize is a sequential pattern that follows the same format as the message it self. For fields that the analyst wants to extract, a field token of the form %fieldname% is put in its place.&lt;/p&gt;
+
+&lt;p&gt;As an example, this is pattern that&amp;rsquo;s applied to the corresponding sudo message:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;jan 15 14:07:04 testserver sudo: pam_unix(sudo:auth): password failed
+
+%msgtime% %apphost% %appname% : pam_unix ( sudo : %action% ) : %method% %status%
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this example, we are tagging six different tokens of the message with semantic fields, including:&lt;/p&gt;
+
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Field&lt;/th&gt;
+&lt;th&gt;Value&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;%msgtime%&lt;/td&gt;
+&lt;td&gt;jan 15 14:07:04&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;%apphost%&lt;/td&gt;
+&lt;td&gt;testserver&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;%appname%&lt;/td&gt;
+&lt;td&gt;sudo&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;%action%&lt;/td&gt;
+&lt;td&gt;auth&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;%method%&lt;/td&gt;
+&lt;td&gt;password&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;%status%&lt;/td&gt;
+&lt;td&gt;failed&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;Note that it is not required to add spaces before and after the parenthesis. The parser uses the same scanner for message patters as it uses for the messages themselves, so the parenthesis will be extracted as separate tokens in both cases. It just seems to be more clear to have the spaces.&lt;/p&gt;
+
+&lt;p&gt;Here&amp;rsquo;s another longer example (which you may have to horizontall scroll to see):&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;id=firewall time=&amp;quot;2005-03-18 14:01:46&amp;quot; fw=TOPSEC priv=6 recorder=kernel type=conn policy=414 proto=TCP rule=accept src=61.167.71.244 sport=35223 dst=210.82.119.211 dport=25 duration=27 inpkt=37 outpkt=39 sent=1770 rcvd=20926 smac=00:04:c1:8b:d8:82 dmac=00:0b:5f:b2:1d:80
+
+id = %appname% time = &amp;quot; %msgtime% &amp;quot; fw = %apphost% priv = %integer% recorder = %string% type = %string% policy = %policyid% proto = %protocol% rule = %status% src = %srcip% sport = %srcport% dst = %dstip% dport = %dstport% duration = %integer% inpkt = %pktsrecv% outpkt = %pktssent% sent = %bytessent% rcvd = %bytesrecv% smac = %srcmac% dmac = %dstmac%
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;field-tokens:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Field Tokens&lt;/h3&gt;
+
+&lt;p&gt;A field token is of the format &amp;ldquo;%field:type:meta%&amp;rdquo;:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;field is the name of the field&lt;/li&gt;
+&lt;li&gt;type is the token type of the field&lt;/li&gt;
+&lt;li&gt;meta is one of the following meta characters -, +, *, where
+
+&lt;ul&gt;
+&lt;li&gt;&amp;rdquo;-&amp;rdquo; means the rest of the tokens&lt;/li&gt;
+&lt;li&gt;&amp;rdquo;+&amp;rdquo; means one or more of this token&lt;/li&gt;
+&lt;li&gt;&amp;ldquo;*&amp;rdquo; means zero or more of this token&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;A field token can take different formats. The supported formats are:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;%field%&lt;/li&gt;
+&lt;li&gt;%type%&lt;/li&gt;
+&lt;li&gt;%field:type%&lt;/li&gt;
+&lt;li&gt;%field:meta%&lt;/li&gt;
+&lt;li&gt;%type:meta%&lt;/li&gt;
+&lt;li&gt;%field:type:meta%&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h4 id=&#34;using-the-meta-character:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &lt;code&gt;-&lt;/code&gt; Meta Character&lt;/h4&gt;
+
+&lt;p&gt;Below is an example of how to use the &lt;code&gt;-&lt;/code&gt; meta character:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;jan 14 10:15:56 testserver sudo:    gonner : tty=pts/3 ; pwd=/home/gonner ; user=root ; command=/bin/su - ustream
+
+%msgtime% %apphost% %appname% : %srcuser% : tty = %string% ; pwd = %string% ; user = %dstuser% ; command = %method:-%
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this example, most field tokens are specified in the %field% format, except for the last one. The last token, &lt;code&gt;%method:-&lt;/code&gt;, specifies that the &lt;code&gt;%method%&lt;/code&gt; token should consume the rest of the tokens. This means the &lt;code&gt;%method%&lt;/code&gt; token will have the value of &lt;code&gt;/bin/su - ustream&lt;/code&gt;. This field token can also be specified as &lt;code&gt;%method::-&lt;/code&gt;.&lt;/p&gt;
+
+&lt;h4 id=&#34;using-the-meta-character-1:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &lt;code&gt;+&lt;/code&gt; Meta Character&lt;/h4&gt;
+
+&lt;p&gt;Here&amp;rsquo;s an example of using the &lt;code&gt;+&lt;/code&gt; meta character:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;Feb  8 21:51:10 mail postfix/pipe[84059]: 440682230: to=&amp;lt;userB@company.office&amp;gt;, orig_to=&amp;lt;userB@company.biz&amp;gt;, relay=dovecot, delay=0.9, delays=0.87/0/0/0.03, dsn=2.0.0, status=sent (delivered via dovecot service)
+
+%msgtime% %apphost% %appname% [ %sessionid% ] : %msgid:integer% : to = &amp;lt; %srcemail% &amp;gt; , orig_to = &amp;lt; %string% &amp;gt; , relay = %string% , delay = %float% , delays = %string% , dsn = %string% , status = %status% ( %reason::+% )
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this example, the 2nd to the last token is &lt;code&gt;%reason::+%&lt;/code&gt;. This means the &lt;code&gt;%reason%&lt;/code&gt; field token will consume one or more tokens until the close parenthesis. This can also be written as &lt;code&gt;%reason:+%&lt;/code&gt;.&lt;/p&gt;
+
+&lt;h4 id=&#34;using-the-meta-character-2:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &lt;code&gt;*&lt;/code&gt; Meta Character&lt;/h4&gt;
+
+&lt;p&gt;Here&amp;rsquo;s an example of using the &lt;code&gt;*&lt;/code&gt; meta character:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;id=firewall time=&amp;quot;2005-03-18 14:01:46&amp;quot; fw=TOPSEC priv= recorder=kernel type=conn policy=414 proto=TCP rule=accept src=61.167.71.244 sport=35223 dst=210.82.119.211 dport=25 duration=27 inpkt=37 outpkt=39 sent=1770 rcvd=20926 smac=00:04:c1:8b:d8:82 dmac=00:0b:5f:b2:1d:80
+
+id = %appname% time = &amp;quot; %msgtime% &amp;quot; fw = %apphost% priv = %integer:*% recorder = %string% type = %string% policy = %policyid% proto = %protocol% rule = %status% src = %srcip% sport = %srcport% dst = %dstip% dport = %dstport% duration = %integer% inpkt = %pktsrecv% outpkt = %pktssent% sent = %bytessent% rcvd = %bytesrecv% smac = %srcmac% dmac = %dstmac%
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this example, part of the pattern is specified as &lt;code&gt;priv = %integer:*%&lt;/code&gt;. This means the value for &lt;code&gt;priv&lt;/code&gt; may or may not be there. This can also be written as &lt;code&gt;%:integer:*%&lt;/code&gt;.&lt;/p&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>

@@ -7,8 +7,604 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <copyright>Dataence, LLC. All Rights Reserved.</copyright>
-    <lastBuildDate>Sat, 28 Feb 2015 18:48:24 -0800</lastBuildDate>
+    <lastBuildDate>Fri, 13 Feb 2015 01:03:08 -0800</lastBuildDate>
     <atom:link href="http://sequencer.io/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>Optimizing Go For the High Performance Log Scanner</title>
+      <link>http://sequencer.io/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</link>
+      <pubDate>Fri, 13 Feb 2015 01:03:08 -0800</pubDate>
+      
+      <guid>http://sequencer.io/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</guid>
+      <description>
+
+&lt;h3 id=&#34;tl-dr:7cafd8125150d58e303b9851cd9816dd&#34;&gt;tl;dr&lt;/h3&gt;
+
+&lt;ul&gt;
+&lt;li&gt;The &lt;code&gt;sequence&lt;/code&gt; scanner is designed to tokenize free-form log messages.
+
+&lt;ul&gt;
+&lt;li&gt;It can scan between 200K to 500K log messages per second depending on message size and core count.&lt;/li&gt;
+&lt;li&gt;It recognizes time stamps, hex strings, IP (v4, v6) addresses, URLs, MAC addresses, integers and floating point numbers.&lt;/li&gt;
+&lt;li&gt;The design is based mostly on finite-state machines.&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;The performance was achieved by the following techniques:
+
+&lt;ol&gt;
+&lt;li&gt;Go Through the String Once and Only Once&lt;/li&gt;
+&lt;li&gt;Avoid Indexing into the String&lt;/li&gt;
+&lt;li&gt;Reduce Heap Allocation&lt;/li&gt;
+&lt;li&gt;Reduce Data Copying&lt;/li&gt;
+&lt;li&gt;Mind the Data Struture&lt;/li&gt;
+&lt;li&gt;Avoid Interfaces If Possible&lt;/li&gt;
+&lt;li&gt;Find Ways to Short Circuit Checks&lt;/li&gt;
+&lt;/ol&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3 id=&#34;background:7cafd8125150d58e303b9851cd9816dd&#34;&gt;Background&lt;/h3&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;In computer science, lexical analysis is the process of converting a sequence of characters into a sequence of tokens, i.e. meaningful character strings. A program or function that performs lexical analysis is called a lexical analyzer, lexer, tokenizer, or scanner. - &lt;a href=&#34;http://en.wikipedia.org/wiki/Lexical_analysis&#34;&gt;Wikipedia&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;One of the most critical functions in the &lt;code&gt;sequence&lt;/code&gt; parser is the message tokenization. At a very high level, message tokenization means taking a single log message and breaking it into a list of tokens.&lt;/p&gt;
+
+&lt;h4 id=&#34;functional-requirements:7cafd8125150d58e303b9851cd9816dd&#34;&gt;Functional Requirements&lt;/h4&gt;
+
+&lt;p&gt;The challenge is knowing where the token break points are. Most log messages are free-form text, which means there&amp;rsquo;s no common structure to them.&lt;/p&gt;
+
+&lt;p&gt;As an example, the following log message can be tokenized into the sequence of tokens below. As you can see, one cannot depend on white spaces to tokenize, as the timestamp would be broken into 3 parts; nor can one use punctuations like &amp;ldquo;;&amp;rdquo; or &amp;ldquo;:&amp;ldquo;, as they would break the log mesage into useless parts.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;jan 14 10:15:56 testserver sudo:    gonner : tty=pts/3 ; pwd=/home/gonner ; user=root ; command=/bin/su - ustream
+
+  #   0: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%ts%&amp;quot;, Value=&amp;quot;jan 14 10:15:56&amp;quot; }
+  #   1: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;testserver&amp;quot; }
+  #   2: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;sudo&amp;quot; }
+  #   3: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
+  #   4: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;gonner&amp;quot; }
+  #   5: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
+  #   6: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;tty&amp;quot; }
+  #   7: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #   8: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;pts/3&amp;quot; }
+  #   9: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;;&amp;quot; }
+  #  10: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;pwd&amp;quot; }
+  #  11: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  12: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;/home/gonner&amp;quot; }
+  #  13: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;;&amp;quot; }
+  #  14: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;user&amp;quot; }
+  #  15: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  16: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;root&amp;quot; }
+  #  17: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;;&amp;quot; }
+  #  18: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;command&amp;quot; }
+  #  19: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  20: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;/bin/su&amp;quot; }
+  #  21: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;-&amp;quot; }
+  #  22: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;ustream&amp;quot; }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;So a log message &lt;em&gt;scanner&lt;/em&gt; or &lt;em&gt;tokenizer&lt;/em&gt; (we will use these terms interchangeably) must understand common components such as timestamp, URL, hex strings, IP addresses (v4 or v6), and mac addresses, so it can break the messages into &lt;em&gt;meaningful components&lt;/em&gt;.&lt;/p&gt;
+
+&lt;h4 id=&#34;performance-requirements:7cafd8125150d58e303b9851cd9816dd&#34;&gt;Performance Requirements&lt;/h4&gt;
+
+&lt;p&gt;From a performance requirements perspective, I really didn&amp;rsquo;t start out with any expectations. However, after achieving 100-200K MPS for parsing (not just tokenizing), I have a strong desire to keep the performance at that level. So the more I can optimize the scanner to tokenize faster, the more head room I have for parsing.&lt;/p&gt;
+
+&lt;p&gt;One may ask, who can POSSIBLY use such performance? Many organizations that I know are generating between 50-100M messages per second (MPS), that&amp;rsquo;s only 1,200 MPS. Some larger organizations I know are generating 60GB of Bluecoat logs per day, &lt;strong&gt;8 years ago&lt;/strong&gt;!! That&amp;rsquo;s a good 3,000 MPS assuming an average of 250 bytes per message. Even if log rate grows at 15%, that&amp;rsquo;s still only 10K MPS today.&lt;/p&gt;
+
+&lt;p&gt;To run through an example, &lt;a href=&#34;http://www.covert.io/research-papers/security/Beehive%20-%20Large-Scale%20Log%20Analysis%20for%20Detecting%20Suspicious%20Activity%20in%20Enterprise%20Networks.pdf&#34;&gt;at EMC, 1.4 billion log messages are generated daily on average, at a rate of one terabyte a day&lt;/a&gt;. That&amp;rsquo;s 16,200 messages per second, and about 714 bytes per message. (Btw, what system can possibly generate messages that are 714 bytes long? That&amp;rsquo;s crazy and completely inefficient!) These EMC numbers are from 2013, so they have likely increased by now.&lt;/p&gt;
+
+&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; parser, with a single CPU core, can process about 270,000 MPS for messages averaging 98 bytes. Assuming the performance is linear compare to the message size (which is pretty close to the truth), we can process 37,000 MPS for messages averaging 714 bytes. That&amp;rsquo;s just enough to parse the 16,2000 MPS, with a little head room to do other types of analysis or future growth.&lt;/p&gt;
+
+&lt;p&gt;Obviously one can throw more hardware at solving the scale problem, but then again, why do that if you don&amp;rsquo;t need to. Just because you have the hardware doesn&amp;rsquo;t mean you should waste the money! Besides, there are much more interesting analytics problems your hardware can be used for than just tokenizing a message.&lt;/p&gt;
+
+&lt;p&gt;In any case, I want to squeeze every oz of performance out of the scanner so I can have more time in the back to parse and analyze. So let&amp;rsquo;s set a goal of keeping at least 200,000 MPS for 100 bytes per message (BPM).&lt;/p&gt;
+
+&lt;p&gt;Yes, go ahead and tell me I shouldn&amp;rsquo;t worry about micro-optimization, because this post is all about that. :)&lt;/p&gt;
+
+&lt;h3 id=&#34;sequence-scanner:7cafd8125150d58e303b9851cd9816dd&#34;&gt;Sequence Scanner&lt;/h3&gt;
+
+&lt;p&gt;In the &lt;code&gt;sequence&lt;/code&gt; package, we implemented a general log message scanner, called &lt;a href=&#34;https://github.com/strace/sequence/blob/master/scanner.go&#34;&gt;GeneralScanner&lt;/a&gt;. GeneralScanner is a sequential lexical analyzer that breaks a log message into a sequence of tokens. It is sequential because it goes through log message sequentially tokentizing each part of the message, without the use of regular expressions. The scanner currently recognizes time stamps, hex strings, IP (v4, v6) addresses, URLs, MAC addresses, integers and floating point numbers.&lt;/p&gt;
+
+&lt;p&gt;This implementation was able to achieve both the functional and performance requirements. The following performance benchmarks are run on a single 4-core (2.8Ghz i7) MacBook Pro, although the tests were only using 1 or 2 cores. The first file is a bunch of sshd logs, averaging 98 bytes per message. The second is a Cisco ASA log file, averaging 180 bytes per message. Last is a mix of ASA, sshd and sudo logs, averaging 136 bytes per message.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  $ ./sequence bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.78 secs, ~ 272869.35 msgs/sec
+
+  $ ./sequence bench scan -i ../../data/allasa.log
+  Scanned 234815 messages in 1.43 secs, ~ 163827.61 msgs/sec
+
+  $ ./sequence bench scan -i ../../data/allasassh.log
+  Scanned 447745 messages in 2.27 secs, ~ 197258.42 msgs/sec
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Performance can be improved by adding more cores:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  $ GOMAXPROCS=2 ./sequence bench scan -i ../../data/sshd.all -w 2
+  Scanned 212897 messages in 0.43 secs, ~ 496961.52 msgs/sec
+
+  $ GOMAXPROCS=2 ./sequenceo bench scan -i ../../data/allasa.log -w 2
+  Scanned 234815 messages in 0.80 secs, ~ 292015.98 msgs/sec
+
+  $ GOMAXPROCS=2 ./sequence bench scan -i ../../data/allasassh.log -w 2
+  Scanned 447745 messages in 1.20 secs, ~ 373170.45 msgs/sec
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&#34;concepts:7cafd8125150d58e303b9851cd9816dd&#34;&gt;Concepts&lt;/h4&gt;
+
+&lt;p&gt;To understand the scanner, you have to understand the following concepts that are part of the package.&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;p&gt;A &lt;em&gt;Token&lt;/em&gt; is a piece of information extracted from the original log message. It is a struct that contains fields for &lt;em&gt;TokenType&lt;/em&gt;, &lt;em&gt;FieldType&lt;/em&gt;, and &lt;em&gt;Value&lt;/em&gt;.&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;A &lt;em&gt;TokenType&lt;/em&gt; indicates whether the token is a literal string (one that does not change), a variable string (one that could have different values), an IPv4 or IPv6 address, a MAC address, an integer, a floating point number, or a timestamp.&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;A &lt;em&gt;FieldType&lt;/em&gt; indicates the semantic meaning of the token. For example, a token could be a source IP address (%srcipv4%), or a user (%srcuser% or %dstuser%), an action (%action%) or a status (%status%).&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;A &lt;em&gt;Sequence&lt;/em&gt; is a list of Tokens. It is the key data structure consumed and returned by the &lt;em&gt;Scanner&lt;/em&gt;, &lt;em&gt;Analyzer&lt;/em&gt;, and the &lt;em&gt;Parser&lt;/em&gt;.&lt;/p&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Basically, the scanner takes a log message string, tokenizes it and returns a &lt;em&gt;Sequence&lt;/em&gt; with the recognized &lt;em&gt;TokenType&lt;/em&gt; marked. This &lt;em&gt;Sequence&lt;/em&gt; is then fed into the analyzer or parser, and the analyzer or parser in turn returns another &lt;em&gt;Sequence&lt;/em&gt; that has the recognized &lt;em&gt;FieldType&lt;/em&gt; marked.&lt;/p&gt;
+
+&lt;h4 id=&#34;design:7cafd8125150d58e303b9851cd9816dd&#34;&gt;Design&lt;/h4&gt;
+
+&lt;p&gt;Tokenizers or scanners are usually implemented using finite-state machines. Each FSM (or FSA, finite state automata) understands a specific sequences of characters that make up a type of token.&lt;/p&gt;
+
+&lt;p&gt;In the &lt;code&gt;sequence&lt;/code&gt; scanner, there are three FSMs: Time, HexString and General.&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;The Time FSM understands a list of &lt;a href=&#34;https://github.com/strace/sequence/blob/master/time.go&#34;&gt;time formats&lt;/a&gt;. This list of time formats are commonly seen in log messages. It is also fairly easy to add to this list if needed.&lt;/li&gt;
+&lt;li&gt;The HexString FSM is designed to understand IPv6 addresses (dead:beef:1234:5678:223:32ff:feb1:2e50 or f0f0:f::1), MAC addresses (00:04:c1:8b:d8:82), fingerprints or signatures (de:ad:be:ef:74:a6:bb:45:45:52:71:de:b2:12:34:56).&lt;/li&gt;
+&lt;li&gt;The General FSM that recognizes URLs, IPv4 addresses, and any literal or strings.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Each character in the log string are run through all three FSMs.&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;If a time format is matched, that&amp;rsquo;s what it will be returned.&lt;/li&gt;
+&lt;li&gt;Next if a hex string is matched, it is also returned.
+
+&lt;ul&gt;
+&lt;li&gt;We mark anything with 5 colon characters and no successive colons like &amp;ldquo;::&amp;rdquo; to be a MAC address.&lt;/li&gt;
+&lt;li&gt;Anything that has 7 colons and no successive colons are marked as IPv6 address.&lt;/li&gt;
+&lt;li&gt;Anything that has less than 7 colons but has only 1 set of successive colons like &amp;ldquo;::&amp;rdquo; are marked as IPv6 address.&lt;/li&gt;
+&lt;li&gt;Everything else is just a literal.&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;Finally if neither of the above matched, we return what the general FSM has matched.
+
+&lt;ul&gt;
+&lt;li&gt;The general FSM recognizes these quote characters: &amp;ldquo;, &amp;lsquo; and &amp;lt;. If these characters are encountered, then it will consider anything between the quotes to be a single token.&lt;/li&gt;
+&lt;li&gt;Anything that starts with http:// or https:// are considered URLs.&lt;/li&gt;
+&lt;li&gt;Anything that matches 4 integer octets are considered IP addresses.&lt;/li&gt;
+&lt;li&gt;Anything that matches two integers with a dot in between are considered floats.&lt;/li&gt;
+&lt;li&gt;Anything that matches just numbers are considered integers.&lt;/li&gt;
+&lt;li&gt;Everything else are literals.&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h4 id=&#34;performance:7cafd8125150d58e303b9851cd9816dd&#34;&gt;Performance&lt;/h4&gt;
+
+&lt;p&gt;To achieve the performance requirements, the following rules and optimizations are followed. Some of these are Go specific, and some are general recommendations.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;1. Go Through the String Once and Only Once&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;This is a hard requirement, otherwise we can&amp;rsquo;t call this project a &lt;em&gt;sequential&lt;/em&gt; parser. :)&lt;/p&gt;
+
+&lt;p&gt;This is probably a pretty obvious technique. The more times you loop through loop through a string, the lower the performance. If you used regular expressions to parse logs, you will likely go through parts of the log message multiple times due to back tracking or look forward, etc.&lt;/p&gt;
+
+&lt;p&gt;I took great pain to ensure that I don&amp;rsquo;t need to look forward or look backward in the log string to determine the current token type, and I think the effort paid off.&lt;/p&gt;
+
+&lt;p&gt;In reality though, while I am only looping through the log string once, and only once, I do run each character through three different FSMs. However, it is still much less expensive than looping through three times, each time checking a single FSM. However, the more FSMs I run the characters through, the slower it gets.&lt;/p&gt;
+
+&lt;p&gt;This was apparently when I &lt;a href=&#34;https://github.com/strace/sequence/commit/a5447814f43b4b9b7e804b14dde38e88fd53e6d0&#34;&gt;updated the scanner to support IPv6 and hex strings&lt;/a&gt;. I tried a couple of different approaches. First, I added an IPv6 specific FSM. So in addition to the original time, mac and general FSMs, there are now 4. That dropped performance by like 15%!!! That&amp;rsquo;s just unacceptable.&lt;/p&gt;
+
+&lt;p&gt;The second approach, which is the one I checked in, combines the MAC, IPv6 and general hex strings into a single FSM. That helped somewhat. I was able to regain about 5% of the performance hit. However, because I can no longer short circuit the MAC address check (by string length and colon positions), I was still experiencing a 8-10% hit.&lt;/p&gt;
+
+&lt;p&gt;What this means is that for most tokens, instead of checking just 2 FSMs because I can short circuit the MAC check pretty early, I have to now check all 3 FSMs.&lt;/p&gt;
+
+&lt;p&gt;So the more FSMs, the more comlicated the FSMs, the more performance hits there will be.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;2. Avoid Indexing into the String&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;This is really a Go-specific recommentation. Each time you index into a slice or string, Go will perform bounds checking for you, which means there&amp;rsquo;s extra operations it&amp;rsquo;s doing, and also means lower performance. As an example, here are results from two benchmark runs. The first is with bounds checking enabled, which is default Go behavior. The second disables bounds checking.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  $ go run ./sequence.go bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.79 secs, ~ 268673.91 msgs/sec
+
+  $ go run -gcflags=-B ./sequence.go bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.77 secs, ~ 277479.58 msgs/sec
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The performance difference is approximately 3.5%! However, while it&amp;rsquo;s fun to see the difference, I would never recommend disable bounds checking in production. So the next best thing is to remove as many operations that index into a string or slice as possible. Specifically:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Use &amp;ldquo;range&amp;rdquo; in the loops, e.g. &lt;code&gt;for i, r := range str&lt;/code&gt; instead of &lt;code&gt;for i := 0; i &amp;lt; len(str); i++ { if str[i] == ... }&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;If you are checking a specific character in the string/slice multiple times, assign it to a variable and use the variable instead. This will avoid indexing into the slice/string multiple times.&lt;/li&gt;
+&lt;li&gt;If there are multiple conditions in an &lt;code&gt;if&lt;/code&gt; statement, try to move (or add) the non-indexing checks to the front of the statement. This sometimes will help short circuit the checks and avoid the slice-indexing checks.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;One might question if this is worth optimizing, but like I said, I am trying to squeeze every oz of performance so 3.5% is still good for me. Unfornately I do know I won&amp;rsquo;t get 3.5% since I can&amp;rsquo;t remove every operation that index into slice/string.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;3. Reduce Heap Allocation&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;This is true for all languages (where you can have some control of stack vs heap allocation), and it&amp;rsquo;s even more true in Go. Mainly in Go, if you allocate a new slice, Go will &amp;ldquo;zero&amp;rdquo; out the allocated memory. This is great from a safety perspective, but it does add to the overhead.&lt;/p&gt;
+
+&lt;p&gt;As an example, in the scanner I originally allocated a new &lt;em&gt;Sequence&lt;/em&gt; (slice of &lt;em&gt;Token&lt;/em&gt;) for every new message. However, when i changed it to re-use the existing slice, the performance increased by over 10%!&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  $ go run ./sequence.go bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.87 secs, ~ 246027.12 msgs/sec
+
+  $ go run ./sequence.go bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.77 secs, ~ 275038.83 msgs/sec
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The best thing to do is to run Go&amp;rsquo;s builtin CPU profiler, and look at the numbers for Go internal functions such as &lt;code&gt;runtime.makeslice&lt;/code&gt;, &lt;code&gt;runtime.markscan&lt;/code&gt;, and &lt;code&gt;runtime.memclr&lt;/code&gt;. Large percentages and numbers for these internal functions are dead giveaway that you are probably allocating too much stuff on the heap.&lt;/p&gt;
+
+&lt;p&gt;I religiously go through the SVGs generated from the Go profiler to help me identify hot spots where I can optimize.&lt;/p&gt;
+
+&lt;p&gt;Here&amp;rsquo;s also a couple of tips I picked up from the &lt;a href=&#34;https://groups.google.com/forum/#!topic/golang-nuts/baU4PZFyBQQ&#34;&gt;go-nuts mailing list&lt;/a&gt;:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;Maps are bad&amp;ndash;even if they&amp;rsquo;re storing integers or other non-pointer structs. The implementation appears to have lots of pointers inside which must be evaluated and followed during mark/sweep GC.  Using structures with pointers magnifies the expense.&lt;/li&gt;
+&lt;li&gt;Slices are surprisingly bad (including strings and substrings of existing strings). A slice is a pointer to the backing array with a length and capacity. It would appear that the internal pointer that causes the trouble because GC wants to inspect it.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;strong&gt;4. Reduce Data Copying&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;Data copying is expensive. It means the run time has to allocate new space and copy the data over. It&amp;rsquo;s even more expensive when you can&amp;rsquo;t have do &lt;code&gt;memcpy&lt;/code&gt; of a slice in Go like you can in C. Again, direct memory copying is not Go&amp;rsquo;s design goal. It is also much safer if you can prevent users from playing with memory directly too much. However, it is still a good idea to avoid any copying of data, whether it&amp;rsquo;s string or slice.&lt;/p&gt;
+
+&lt;p&gt;As much as I can, I try to do in place processing of the data. Every &lt;em&gt;Sequence&lt;/em&gt; is worked on locally and I try not to copy &lt;em&gt;Sequence&lt;/em&gt; or string unless I absolutely have to.&lt;/p&gt;
+
+&lt;p&gt;Unfortunately I don&amp;rsquo;t have any comparison numbers for this one, because I learned from &lt;a href=&#34;http://zhen.org/blog/surgemq-mqtt-message-queue-750k-mps/&#34;&gt;previous projects&lt;/a&gt; that I should avoid copying as much as possible.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;5. Mind the Data Struture&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;If there&amp;rsquo;s one thing I learned over the past year, is to use the right data structure for the right job. I&amp;rsquo;ve written about other data structures such as &lt;a href=&#34;http://zhen.org/blog/ring-buffer-variable-length-low-latency-disruptor-style/&#34;&gt;ring buffer&lt;/a&gt;, &lt;a href=&#34;http://zhen.org/blog/benchmarking-bloom-filters-and-hash-functions-in-go/&#34;&gt;bloom filters&lt;/a&gt;, and &lt;a href=&#34;http://zhen.org/blog/go-skiplist/&#34;&gt;skiplist&lt;/a&gt; before.&lt;/p&gt;
+
+&lt;p&gt;However, &lt;a href=&#34;http://en.wikipedia.org/wiki/Finite-state_machine&#34;&gt;finite-state automata or machine&lt;/a&gt; is my latest love and I&amp;rsquo;ve been using it at various projects such as my &lt;a href=&#34;http://zhen.org/blog/generating-porter2-fsm-for-fun-and-performance/&#34;&gt;porter2&lt;/a&gt; and &lt;a href=&#34;https://github.com/surge/xparse/tree/master/etld&#34;&gt;effective TLD&lt;/a&gt;. Ok, technical FSM itself is not a data structure and can be implemented in different ways. In the &lt;code&gt;sequence&lt;/code&gt; project, I used both a tree representation as well as a bunch of switch-case statements. For the &lt;a href=&#34;http://zhen.org/blog/generating-porter2-fsm-for-fun-and-performance/&#34;&gt;porter2&lt;/a&gt; FSMs, I used switch-case to implement them.&lt;/p&gt;
+
+&lt;p&gt;Interestingly, swtich-case doesn&amp;rsquo;t always win. I tested the time FSM using both tree and switch-case implementations, and the tree actually won out. (Below, 1 is tree, 2 is switch-case.) So guess which one is checked in?&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;BenchmarkTimeStep1   2000000         696 ns/op
+BenchmarkTimeStep2   2000000         772 ns/op
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Writing this actually reminds me that in the parser, I am currently using a tree to parse the sequences. While parsing, there could be multiple paths that the sequence will match. Currently I walk all the matched paths fully, before choosing one that has the highest score. What I should do is to do a weighted walk, and always walk the highest score nodes first. If at the end I get a perfect score, I can just return that path and not have to walk the other paths. (Note to self, more parser optimization to do).&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;6. Avoid Interfaces If Possible&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;This is probably not a great advice to give to Go developers. Interface is probably one of the best Go features and everyone should learn to use it. However, if you want high performane, avoid interfaces as it provides additional layers of indirection. I don&amp;rsquo;t have performance numbers for the &lt;code&gt;sequence&lt;/code&gt; project since I tried to avoid interfaces in high performance areas from the start. However, previous in the &lt;a href=&#34;http://zhen.org/blog/ring-buffer-variable-length-low-latency-disruptor-style/&#34;&gt;ring buffer&lt;/a&gt; project, the version that uses interface is 140% slower than the version that didn&amp;rsquo;t.&lt;/p&gt;
+
+&lt;p&gt;I don&amp;rsquo;t have the direct link but someone on the go-nuts mailing list also said:&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;If you really want high performance, I would suggest avoiding interfaces and, in general, function calls like the plague, since they are quite expensive in Go (compared to C). We have implemented basically the same for our internal web framework (to be released some day) and we&amp;rsquo;re almost 4x faster than encoding/json without doing too much optimization. I&amp;rsquo;m sure we could make this even faster.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;&lt;strong&gt;7. Find Ways to Short Circuit Checks&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;Find ways to quickly eliminate the need to run a section of the code has been tremendously helpful to improve performance. For example, here are a couple of place where I tried to do that.&lt;/p&gt;
+
+&lt;p&gt;In &lt;a href=&#34;https://github.com/strace/sequence/blob/master/scanner.go#L223&#34;&gt;this first example&lt;/a&gt;, I simply added &lt;code&gt;l == 1&lt;/code&gt; before the actual equality check of the string values. The first output is before the add, the second is after. The difference is about 2% performance increase.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  $ go run ./sequence.go bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.78 secs, ~ 272303.79 msgs/sec
+
+  $ go run ./sequence.go bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.76 secs, ~ 278433.34 msgs/sec
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In &lt;a href=&#34;https://github.com/strace/sequence/blob/master/scanner.go#L282&#34;&gt;the second example&lt;/a&gt;, I added a quick check to make sure the remaining string is at least as long as the shortest time format. If there&amp;rsquo;s not enough characters, then don&amp;rsquo;t run the time FSM. The performance difference is about 2.5%.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  $ go run ./sequence.go bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.78 secs, ~ 272059.04 msgs/sec
+
+  $ go run ./sequence.go bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.76 secs, ~ 279388.47 msgs/sec
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;So by simply adding a couple of checks, I&amp;rsquo;ve increased perfromance by close to 5%.&lt;/p&gt;
+
+&lt;h3 id=&#34;conclusion:7cafd8125150d58e303b9851cd9816dd&#34;&gt;Conclusion&lt;/h3&gt;
+
+&lt;p&gt;At this point I think I have squeezed every bit of performance out of the scanner, to the extend of my knowledge. It&amp;rsquo;s performing relatively well and it&amp;rsquo;s given the parser plenty of head room to do other things. I hope some of these lessons are helpful to whatever you are doing.&lt;/p&gt;
+
+&lt;p&gt;Feel free to take a look at the &lt;a href=&#34;https://github.com/strace/sequence&#34;&gt;sequence&lt;/a&gt; project and try it out if you. If you have any issues/comments, please don&amp;rsquo;t hestiate to &lt;a href=&#34;https://github.com/strace/sequence/issues&#34;&gt;open a github issue&lt;/a&gt;.&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Introduction</title>
+      <link>http://sequencer.io/manual/introduction/</link>
+      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
+      
+      <guid>http://sequencer.io/manual/introduction/</guid>
+      <description>
+
+&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic05.jpg&#34; alt=&#34;Obligatory Log Picture&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;sequence&lt;/code&gt; is a &lt;em&gt;high performance sequential log analyzer and parser&lt;/em&gt;. It &lt;em&gt;sequentially&lt;/em&gt; goes through a log message, &lt;em&gt;parses&lt;/em&gt; out the meaningful parts, without the use regular expressions. It can achieve &lt;em&gt;high performance&lt;/em&gt; parsing of &lt;strong&gt;100,000 - 200,000 messages per second (MPS)&lt;/strong&gt; without the need to separate parsing rules by log source type.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;&lt;code&gt;sequence&lt;/code&gt; is currently under active development and should be considered unstable until further notice.&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;If you have a set of logs you would like me to test out, please feel free to &lt;a href=&#34;https://github.com/strace/sequence/issues&#34;&gt;open an issue&lt;/a&gt; and we can arrange a way for me to download and test your logs.&lt;/strong&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;motivation:2767292a573dc549b9b4297b701af3ab&#34;&gt;Motivation&lt;/h3&gt;
+
+&lt;p&gt;Log messages are notoriusly difficult to parse because they all have different formats. Industries (see Splunk, ArcSight, Tibco LogLogic, Sumo Logic, Logentries, Loggly, LogRhythm, etc etc etc) have been built to solve the problems of parsing, analyzing and understanding log messages.&lt;/p&gt;
+
+&lt;p&gt;Let&amp;rsquo;s say you have a bunch of log files you like to parse. The first problem you will typically run into is you have no way of telling how many DIFFERENT types of messages there are, so you have no idea how much work there will be to develop rules to parse all the messages. Not only that, you have hundreds of thousands, if not  millions of messages, in front of you, and you have no idea what messages are worth parsing, and what&amp;rsquo;s not.&lt;/p&gt;
+
+&lt;p&gt;The typical workflow is develop a set of regular expressions and keeps testing against the logs until some magical moment where all the logs you want parsed are parsed. Ask anyone who does this for a living and they will tell you this process is long, frustrating and error-prone.&lt;/p&gt;
+
+&lt;p&gt;Sequence is developed to make analyzing and parsing log messages a lot easier and faster.&lt;/p&gt;
+
+&lt;h3 id=&#34;existing-approaches:2767292a573dc549b9b4297b701af3ab&#34;&gt;Existing Approaches&lt;/h3&gt;
+
+&lt;p&gt;The industry has came up with a couple of different approaches to solving the log parsing problem. In a way, you can say the log parsing problem has been solved, because analysts have a lot of different tools to choose from when they need to understand logs.&lt;/p&gt;
+
+&lt;p&gt;Commercially, there are companies such as Splunk, ArcSight, Tibco LogLogic, SumoLogic, LogEntries, Loggly, LogRhythm, etc etc etc that can provide you either an on-premise or in-the-cloud (SaaS) solution. They provide different capabilities and feature sets depending on the primary use case you are targetting.&lt;/p&gt;
+
+&lt;p&gt;Open source wise, you have tools such as ElasticSearch, Greylog2, OSSIM, and a few others that wants to provide you end-to-end capabilities similar to the commercial offerings. There are also libraries such as &lt;a href=&#34;http://www.liblognorm.com/&#34;&gt;liblognorm&lt;/a&gt; and &lt;a href=&#34;http://logstash.net/&#34;&gt;logstash&lt;/a&gt; you can use to build your own tools.&lt;/p&gt;
+
+&lt;p&gt;And then there&amp;rsquo;s Fedora&amp;rsquo;s &lt;a href=&#34;https://fedorahosted.org/lumberjack/&#34;&gt;Project Lumberjack&lt;/a&gt;, which &amp;ldquo;is an open-source project to update and enhance the event log architecture&amp;rdquo; and &amp;ldquo;aims to improve the creation and standardize the content of event logs by implementing the concepts and specifications proposed by the ​Common Event Expression (CEE).&amp;rdquo;&lt;/p&gt;
+
+&lt;p&gt;Unfortunately all of these tools have one or more of the following problems.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;First&lt;/em&gt;, it looks like many of these open source efforts have all been abandoned or put in hibernation, and haven&amp;rsquo;t been updated since 2012 or 2013. liblognrom did put out &lt;a href=&#34;http://www.liblognorm.com/news/&#34;&gt;a couple of updates&lt;/a&gt; in the past couple of years.&lt;/p&gt;
+
+&lt;p&gt;It is understandable. Log parsing is &lt;strong&gt;BORING&lt;/strong&gt;. I mean, who wants to sit there and stare at logs all day and try to come up with regular expressions or other types of parsing rules? LogLogic used to have a team of LogLabs analysts that did that, and I have to say I truly appreciated their effort and patience, because I cannot do that.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;Second&lt;/em&gt;, many of these commercial and open source tools uses regular expression to parse log messages. This approach is widely adopted because regular expression (regex) is a known quantity. Many administrators already know regex to some extend, and tools are widely available to interpret regex. In the early days of log analysis, Perl was used most often, so most rules you see are written in PCRE, or Perl Compatible Regular Expression. However, the process of writing regex rules is long, frustrating, and error-prone.&lt;/p&gt;
+
+&lt;p&gt;Even after you have developed a set of regular expressions that match the original set of messages, if new messages come in, you will have to determine which of the new messages need to be parsed. And if you develop a new set of regular expressions to parse those new messages, you still have no idea if the regular expressions will conflict with the ones you wrote before. If you write your regex parsers too liberally, it can easily parse the wrong messages.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;Third&lt;/em&gt;, even after the regex rules are written, the performance is far from acceptable. This is mainly due to the fact that there&amp;rsquo;s no way to match multiple regular expressions at the same time. The engine would have to go through each individual rule separately. It can typically parse several thousands messages per second. Given enough CPU resources on a large enough machine, regex parsers can probably parse tens of thousands of messages per second. Even to achieve this type of performance, you will likely need to limit the number of regular expressions the parser has. The more regex rules, the slower the parser will go.&lt;/p&gt;
+
+&lt;p&gt;To work around this performance issue, companies have tried to separate the regex rules for different log message types into different parsers. For example, they will have a parser for Cisco ASA logs, a parser for sshd logs, a parser for Apache logs, etc etc. And then they will require the analysts to tell them which parser to use (usually by indicating the log source type of the originating IP address or host.)&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;Last but not least&lt;/em&gt;, none of the existing tools can help analysts determine what patterns to write in order to parse their log files. Large companies can sometimes generate hundreds of gigabytes, if not terabytes, of data and billions of log messages per day. Sometimes it will take a team of analysts hundreds of hours to comb through log files, develop regex rules, test for conflicts and then repeat this whole process.&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Sequence</title>
+      <link>http://sequencer.io/manual/sequence/</link>
+      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
+      
+      <guid>http://sequencer.io/manual/sequence/</guid>
+      <description>
+
+&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/banner2.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;A new approach taken by &lt;code&gt;sequence&lt;/code&gt; breaks the art of extracting meaningful information from log messages into three parts: scanning, analyzing and parsing.&lt;/p&gt;
+
+&lt;p&gt;In &lt;code&gt;sequence&lt;/code&gt;, the first critical function to understanding a log message is to convert it into a sequence of valid tokens, i.e., &lt;strong&gt;meaningful&lt;/strong&gt; character strings. This function is called a &lt;em&gt;scanner&lt;/em&gt;, but it can be called a &lt;em&gt;lexical analyzer&lt;/em&gt;, &lt;em&gt;lexer&lt;/em&gt;, or &lt;em&gt;tokenizer&lt;/em&gt;. The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;scanner&lt;/em&gt; goes through log message sequentially while tokentizing each part of the message, without the use of regular expressions.&lt;/p&gt;
+
+&lt;p&gt;The &lt;em&gt;analyzer&lt;/em&gt; takes all the &lt;em&gt;sequences&lt;/em&gt; returned by the &lt;em&gt;scanner&lt;/em&gt; and attempt to automatically write the parsing rules. While it&amp;rsquo;s impossible to automatically generate 100% of the rules, the goal is to get to 75% accuracy by leveraging hints provided by analysts.&lt;/p&gt;
+
+&lt;p&gt;Finally, the &lt;em&gt;parser&lt;/em&gt; will take the rules generated by the analyzer (and updated/corrected by some human) as well as the &lt;em&gt;sequences&lt;/em&gt; returned by the &lt;em&gt;scanner&lt;/em&gt; for log messages, and attempt to identify the matching rule. Based on the matching rule, the &lt;em&gt;parser&lt;/em&gt; will tag all the recognized tokens with a semantic tag, as defined by the user.&lt;/p&gt;
+
+&lt;p&gt;The approach taken by the &lt;em&gt;parser&lt;/em&gt; is a tree-based parsing approach, which is also used by &lt;a href=&#34;http://www.liblognorm.com/&#34;&gt;liblognorm&lt;/a&gt;. This approach is much higher performance, as it only requires going through the log message only once. And because most, if not all, parsing rules are pre-built into a prefix tree, the engine just needs to walk through the tree once and be able to determine if there&amp;rsquo;s a match.&lt;/p&gt;
+
+&lt;p&gt;Keep in mind that &lt;code&gt;sequence&lt;/code&gt; is NOT a replacement for Splunk or ElasticSearch, or any of the log analytics solutions. It is a library and a tool that can help parse messages much faster. The result of &lt;code&gt;sequence&lt;/code&gt; can be fed into these log analytics tools for further analysis.&lt;/p&gt;
+
+&lt;h3 id=&#34;other-concepts:196ac21fc7c80b3643c5060d84767136&#34;&gt;Other Concepts&lt;/h3&gt;
+
+&lt;p&gt;The &lt;em&gt;scanner&lt;/em&gt; returns a &lt;em&gt;sequence&lt;/em&gt;, or a list of tokens, which can then be consumed by the &lt;em&gt;analyzer&lt;/em&gt; or &lt;em&gt;parser&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;A &lt;em&gt;Token&lt;/em&gt; is a piece of information extracted from the original log message. It is a struct that contains fields for &lt;em&gt;TokenType&lt;/em&gt;, &lt;em&gt;FieldType&lt;/em&gt;, &lt;em&gt;Value&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;A &lt;em&gt;TokenType&lt;/em&gt; indicates whether the token is a literal string (one that does not change), a variable string (one that could have different values), an IPv4 or IPv6 address, a MAC address, an integer, a floating point number, or a timestamp.&lt;/p&gt;
+
+&lt;p&gt;A &lt;em&gt;FieldType&lt;/em&gt; indicates the semantic meaning of the token. For example, a token could be a source IP address (%srcipv4%), or a user (%srcuser% or %dstuser%), an action (%action%) or a status (%status%).&lt;/p&gt;
+
+&lt;h3 id=&#34;performance:196ac21fc7c80b3643c5060d84767136&#34;&gt;Performance&lt;/h3&gt;
+
+&lt;p&gt;Most of the tools out there perform at several thousands messages per second (MPS) on a single machine using regex parsers. For &lt;code&gt;sequence&lt;/code&gt;, we are able to achieve over 100,000 MPS with average message size of 140 bytes, using a single CPU core. &lt;code&gt;sequence&lt;/code&gt; can also scale almost linearly (with a slight penalty due to communications overhead) as more cores are added.&lt;/p&gt;
+
+&lt;p&gt;The following performance benchmarks are run on a single 4-core (2.8Ghz i7) MacBook Pro. The first file is a
+bunch of sshd logs, averaging 98 bytes per message. The second is a Cisco ASA log file, averaging 180 bytes per message. Last is a mix of ASA, sshd and sudo logs, averaging 136 bytes per message.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  $ ./sequence bench parse -p ../../patterns/sshd.txt -i ../../data/sshd.all
+  Parsed 212897 messages in 1.69 secs, ~ 126319.27 msgs/sec
+
+  $ ./sequence bench parse -p ../../patterns/asa.txt -i ../../data/allasa.log
+  Parsed 234815 messages in 2.89 secs, ~ 81323.41 msgs/sec
+
+  $ ./sequence bench parse -d ../patterns -i ../data/asasshsudo.log
+  Parsed 447745 messages in 4.47 secs, ~ 100159.65 msgs/sec
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Performance can be improved by adding more cores:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  GOMAXPROCS=2 ./sequence bench parse -p ../../patterns/sshd.txt -i ../../data/sshd.all -w 2
+  Parsed 212897 messages in 1.00 secs, ~ 212711.83 msgs/sec
+
+  $ GOMAXPROCS=2 ./sequence bench parse -p ../../patterns/asa.txt -i ../../data/allasa.log -w 2
+  Parsed 234815 messages in 1.56 secs, ~ 150769.68 msgs/sec
+
+  $ GOMAXPROCS=2 ./sequence bench parse -d ../patterns -i ../data/asasshsudo.log -w 2
+  Parsed 447745 messages in 2.52 secs, ~ 177875.94 msgs/sec
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;One may ask, who can POSSIBLY use such performance? Many organizations that I know are generating between 50-100M messages per second (MPS), that&amp;rsquo;s only 1,200 MPS. However, some larger organizations I know are generating 60GB of Bluecoat logs per day, &lt;strong&gt;8 years ago&lt;/strong&gt;!! That&amp;rsquo;s a good 3,000 MPS assuming an average of 250 bytes per message. Even if log rate grows at 15%, that&amp;rsquo;s over 10,000 MPS today. This already exceeds the capability of some parsers.&lt;/p&gt;
+
+&lt;p&gt;To run through another example, &lt;a href=&#34;http://www.covert.io/research-papers/security/Beehive%20-%20Large-Scale%20Log%20Analysis%20for%20Detecting%20Suspicious%20Activity%20in%20Enterprise%20Networks.pdf&#34;&gt;at EMC, 1.4 billion log messages are generated daily on average, at a rate of one terabyte a day&lt;/a&gt;. That&amp;rsquo;s 16,200 messages per second, and about 714 bytes per message. These EMC numbers are from 2013, so they have most likely increased by now.&lt;/p&gt;
+
+&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; parser, with a single CPU core, can process about 270,000 MPS for messages averaging 98 bytes. Assuming the performance is linear compare to the message size (which is pretty close to the truth), we can parse 37,000 MPS for messages averaging 714 bytes. That&amp;rsquo;s twice of what&amp;rsquo;s needed for EMC, using a SINGLE CORE!&lt;/p&gt;
+
+&lt;p&gt;Obviously one can throw more hardware at solving the scale problem with the existing tools, but then again, why do that if you don&amp;rsquo;t need to. Just because you have the hardware doesn&amp;rsquo;t mean you should waste the money! Besides, there are much more interesting analytics problems your hardware can be used for than just tokenizing a message.&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Scanner</title>
+      <link>http://sequencer.io/manual/scanner/</link>
+      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
+      
+      <guid>http://sequencer.io/manual/scanner/</guid>
+      <description>
+
+&lt;blockquote&gt;
+&lt;p&gt;In computer science, lexical analysis is the process of converting a sequence of characters into a sequence of tokens, i.e. meaningful character strings. A program or function that performs lexical analysis is called a lexical analyzer, lexer, tokenizer, or scanner. - &lt;a href=&#34;http://en.wikipedia.org/wiki/Lexical_analysis&#34;&gt;Wikipedia&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;In &lt;code&gt;sequence&lt;/code&gt;, the first critical function to understanding a log message is to convert it into a sequence of valid tokens, i.e., &lt;strong&gt;meaningful&lt;/strong&gt; character strings. This function is called a &lt;em&gt;scanner&lt;/em&gt;, but it can be called a &lt;em&gt;lexical analyzer&lt;/em&gt;, &lt;em&gt;lexer&lt;/em&gt;, or &lt;em&gt;tokenizer&lt;/em&gt;. The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;scanner&lt;/em&gt; goes through log message sequentially while tokentizing each part of the message, without the use of regular expressions.&lt;/p&gt;
+
+&lt;p&gt;The biggest challenge to tokenizing is knowing where the break points are. Most log messages are free-form text, which means there&amp;rsquo;s no common structure to them. A log message &lt;em&gt;scanner&lt;/em&gt; or &lt;em&gt;tokenizer&lt;/em&gt; (we will use these terms interchangeably) must understand common components such as timestamp, URL, hex strings, IP addresses (v4 or v6), and mac addresses, so it can break the messages into &lt;strong&gt;meaningful&lt;/strong&gt; tokens.&lt;/p&gt;
+
+&lt;p&gt;There are two reasons for the emphasis on &lt;strong&gt;meaningful&lt;/strong&gt;. First, due to the unstructured nature of most log messages, a scanner cannot depend on whitespaces to separate meaningful parts of the message. As an example, most timestamps in log messages have whitespaces, such as &lt;code&gt;01/02 03:04:05PM &#39;06 -0700&lt;/code&gt;. This semantically should be a single token. But if a scanner tokenizes based on whitespace, then it will be broken into 4 differnt parts, including &lt;code&gt;01/02&lt;/code&gt;, &lt;code&gt;03:04:05PM&lt;/code&gt;, &lt;code&gt;&#39;06&lt;/code&gt; and &lt;code&gt;-0700&lt;/code&gt;. This would obviously be wrong.&lt;/p&gt;
+
+&lt;p&gt;A scanner also cannot depend on punctuations to tokenize the log message. In the above timestamp example, if you count &lt;code&gt;/&lt;/code&gt; and &lt;code&gt;:&lt;/code&gt; as punctuations, then you would end up with 4 different tokens, including &lt;code&gt;01&lt;/code&gt;, &lt;code&gt;02 03&lt;/code&gt;, &lt;code&gt;04&lt;/code&gt;, and &lt;code&gt;05PM &#39;06 -0700&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;Same if you were to look at an IPv4 address such as &amp;ldquo;127.0.0.1&amp;rdquo;, or IPv6 address such as &amp;ldquo;f0f0:f::1&amp;rdquo;, or MAC address such as &amp;ldquo;00:04:c1:8b:d8:82&amp;rdquo;, or a hex signature such as &amp;ldquo;de:ad:be:ef:74:a6:bb:45:45:52:71:de:b2:12:34:56&amp;rdquo;. All these should be their own tokens. But if a scanner depends on only whitespace or punctuations to tokenize a message, these valid tokens would all be broken apart.&lt;/p&gt;
+
+&lt;p&gt;Second, understanding the types of tokens will help the &lt;em&gt;parser&lt;/em&gt; distinguish between different log messages. If two messages are almost identical but one has a hostname and the other has an IP address, the &lt;em&gt;scanner&lt;/em&gt; can let the &lt;em&gt;parser&lt;/em&gt; know, and the &lt;em&gt;parser&lt;/em&gt; would the choose the correct pattern for the message.&lt;/p&gt;
+
+&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; scanners currently automatically recognizes &lt;a href=&#34;http://sequencer.io/manual/tokens&#34;&gt;9 different token types&lt;/a&gt; and &lt;a href=&#34;http://sequencer.io/manual/timeformats&#34;&gt;42 different time stamps&lt;/a&gt; .&lt;/p&gt;
+
+&lt;h3 id=&#34;scanners:adc8a12436d57d609395e4ca6900ba2b&#34;&gt;Scanners&lt;/h3&gt;
+
+&lt;p&gt;&lt;code&gt;sequence&lt;/code&gt; implemented two scanners. First is a &lt;strong&gt;general scanner&lt;/strong&gt; which is a sequential lexical analyzer that breaks unstructured log messages into sequences of tokens. This scanner is mianly used for most system and network log messages that are free-form unstructured text.&lt;/p&gt;
+
+&lt;p&gt;As an example, the following log message can be tokenized into the sequence of tokens below. As you can see, one cannot depend on white spaces to tokenize, as the timestamp would be broken into 3 parts; nor can one use punctuations like &amp;ldquo;;&amp;rdquo; or &amp;ldquo;:&amp;ldquo;, as they would break the log mesage into useless parts.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;jan 14 10:15:56 testserver sudo:    gonner : tty=pts/3 ; pwd=/home/gonner ; user=root ; command=/bin/su - ustream
+
+  #   0: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;ts&amp;quot;, Value=&amp;quot;jan 14 10:15:56&amp;quot; }
+  #   1: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;testserver&amp;quot; }
+  #   2: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;sudo&amp;quot; }
+  #   3: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;:&amp;quot; }
+  #   4: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;gonner&amp;quot; }
+  #   5: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;:&amp;quot; }
+  #   6: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;tty&amp;quot; }
+  #   7: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #   8: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;string&amp;quot;, Value=&amp;quot;pts/3&amp;quot; }
+  #   9: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;;&amp;quot; }
+  #  10: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;pwd&amp;quot; }
+  #  11: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  12: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;string&amp;quot;, Value=&amp;quot;/home/gonner&amp;quot; }
+  #  13: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;;&amp;quot; }
+  #  14: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;user&amp;quot; }
+  #  15: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  16: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;string&amp;quot;, Value=&amp;quot;root&amp;quot; }
+  #  17: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;;&amp;quot; }
+  #  18: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;command&amp;quot; }
+  #  19: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  20: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;string&amp;quot;, Value=&amp;quot;/bin/su&amp;quot; }
+  #  21: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;-&amp;quot; }
+  #  22: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;ustream&amp;quot; }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Second is a &lt;strong&gt;JSON scanner&lt;/strong&gt;, implemented by &lt;code&gt;ScanJson()&lt;/code&gt;, that scans JSON messages and convert them into a &lt;em&gt;sequence&lt;/em&gt; that can be parsed by the &lt;em&gt;parser&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;ScanJson()&lt;/code&gt; will flatten a json string into key=value pairs, and it performs the following transformation:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;all {, }, [, ], &amp;ldquo;, characters are removed&lt;/li&gt;
+&lt;li&gt;colon between key and value are changed to &amp;ldquo;=&amp;rdquo;&lt;/li&gt;
+&lt;li&gt;nested objects have their keys concatenated with &amp;ldquo;.&amp;rdquo;, so a json string like &lt;code&gt;&amp;quot;userIdentity&amp;quot;: {&amp;quot;type&amp;quot;: &amp;quot;IAMUser&amp;quot;}&lt;/code&gt; will be returned as &lt;code&gt;userIdentity.type=IAMUser&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;arrays are flattened by appending an index number to the end of the key, starting with 0, so a json string like &lt;code&gt;{&amp;quot;value&amp;quot;:[{&amp;quot;open&amp;quot;:&amp;quot;2014-08-16T13:00:00.000+0000&amp;quot;}]}&lt;/code&gt; will be returned as &lt;code&gt;value.0.open=2014-08-16T13:00:00.000+0000&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;skips any key that has an empty value, so json strings like &lt;code&gt;&amp;quot;reference&amp;quot;:&amp;quot;&amp;quot;&lt;/code&gt; or &lt;code&gt;&amp;quot;filterSet&amp;quot;: {}&lt;/code&gt; will not show up in the Sequence&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;For example:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;{&amp;quot;EventTime&amp;quot;:&amp;quot;2014-08-16T12:45:03-0400&amp;quot;,&amp;quot;URI&amp;quot;:&amp;quot;myuri&amp;quot;,&amp;quot;uri_payload&amp;quot;:{&amp;quot;value&amp;quot;:[{&amp;quot;open&amp;quot;:&amp;quot;2014-08-16T13:00:00.000+0000&amp;quot;,&amp;quot;close&amp;quot;:&amp;quot;2014-08-16T23:00:00.000+0000&amp;quot;,&amp;quot;isOpen&amp;quot;:true,&amp;quot;date&amp;quot;:&amp;quot;2014-08-16&amp;quot;}],&amp;quot;Count&amp;quot;:1}}
+
+  #   0: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;EventTime&amp;quot; }
+  #   1: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #   2: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;time&amp;quot;, Value=&amp;quot;2014-08-16T12:45:03-0400&amp;quot; }
+  #   3: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;URI&amp;quot; }
+  #   4: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #   5: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;myuri&amp;quot; }
+  #   6: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;uri_payload.value.0.open&amp;quot; }
+  #   7: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #   8: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;time&amp;quot;, Value=&amp;quot;2014-08-16T13:00:00.000+0000&amp;quot; }
+  #   9: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;uri_payload.value.0.close&amp;quot; }
+  #  10: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  11: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;time&amp;quot;, Value=&amp;quot;2014-08-16T23:00:00.000+0000&amp;quot; }
+  #  12: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;uri_payload.value.0.isOpen&amp;quot; }
+  #  13: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  14: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;true&amp;quot; }
+  #  15: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;uri_payload.value.0.date&amp;quot; }
+  #  16: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  17: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;time&amp;quot;, Value=&amp;quot;2014-08-16&amp;quot; }
+  #  18: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;uri_payload.Count&amp;quot; }
+  #  19: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  20: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;integer&amp;quot;, Value=&amp;quot;1&amp;quot; }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;design:adc8a12436d57d609395e4ca6900ba2b&#34;&gt;Design&lt;/h3&gt;
+
+&lt;p&gt;Tokenizers or scanners are usually implemented using finite-state machines. Each FSM (or FSA, finite state automata) understands a specific sequences of characters that make up a type of token.&lt;/p&gt;
+
+&lt;p&gt;In the &lt;code&gt;sequence&lt;/code&gt; scanner, there are three FSMs: Time, HexString and General.&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;The Time FSM understands &lt;a href=&#34;http://sequencer.io/manual/timeformats&#34;&gt;42 different time stamps&lt;/a&gt;. This list of time formats are commonly seen in log messages. It is also fairly easy to add to this list if needed.&lt;/li&gt;
+&lt;li&gt;The HexString FSM is designed to understand IPv6 addresses (dead:beef:1234:5678:223:32ff:feb1:2e50 or f0f0:f::1), MAC addresses (00:04:c1:8b:d8:82), fingerprints or signatures (de:ad:be:ef:74:a6:bb:45:45:52:71:de:b2:12:34:56).&lt;/li&gt;
+&lt;li&gt;The General FSM that recognizes URLs, IPv4 addresses, and any literal or strings.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Each character in the log message are run through all three FSMs, and the following logics are applied:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;If a time format is matched, that&amp;rsquo;s what it will be returned.&lt;/li&gt;
+&lt;li&gt;Next if a hex string is matched, it is also returned.
+
+&lt;ul&gt;
+&lt;li&gt;We mark anything with 5 colon characters and no successive colons like &amp;ldquo;::&amp;rdquo; to be a MAC address.&lt;/li&gt;
+&lt;li&gt;Anything that has 7 colons and no successive colons are marked as IPv6 address.&lt;/li&gt;
+&lt;li&gt;Anything that has less than 7 colons but has only 1 set of successive colons like &amp;ldquo;::&amp;rdquo; are marked as IPv6 address.&lt;/li&gt;
+&lt;li&gt;Everything else is just a literal.&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;Finally if neither of the above matched, we return what the general FSM has matched.
+
+&lt;ul&gt;
+&lt;li&gt;The general FSM recognizes these quote characters: &amp;ldquo;, &amp;lsquo; and &amp;lt;. If these characters are encountered, then it will consider anything between the quotes to be a single token.&lt;/li&gt;
+&lt;li&gt;Anything that starts with http:// or https:// are considered URLs.&lt;/li&gt;
+&lt;li&gt;Anything that matches 4 integer octets are considered IP addresses.&lt;/li&gt;
+&lt;li&gt;Anything that matches two integers with a dot in between are considered floats.&lt;/li&gt;
+&lt;li&gt;Anything that matches just numbers are considered integers.&lt;/li&gt;
+&lt;li&gt;Everything else are literals.&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;To achieve the performance we want, &lt;code&gt;sequence&lt;/code&gt; took great pain to go through the log message once and only once. This is probably a pretty obvious technique. The more times you loop through loop through a string, the lower the performance.&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;sequence&lt;/code&gt; also took great pain to ensure that there&amp;rsquo;s no need to look forward or look backward in the log message to determine the current token type. If you used regular expressions to parse logs, you will likely go through parts of the log message multiple times due to back tracking or look forward, etc.&lt;/p&gt;
+
+&lt;p&gt;In reality though, while the scanners only looping through the log string once, and only once, it does run each character through three different FSMs. However, it is still much less expensive than looping through three times, each time checking a single FSM.&lt;/p&gt;
+
+&lt;p&gt;You can &lt;a href=&#34;http://zhen.org/blog/sequence-optimizing-go-for-high-performance-log-scanner/&#34;&gt;read more details&lt;/a&gt; on how the scanners were able to achieve the performance.&lt;/p&gt;
+
+&lt;h3 id=&#34;performance:adc8a12436d57d609395e4ca6900ba2b&#34;&gt;Performance&lt;/h3&gt;
+
+&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;scanner&lt;/em&gt; is able to tokenize almost 200,000 messages per second for messages averaging 136 bytes. The following performance benchmarks are run on a single 4-core (2.8Ghz i7) MacBook Pro, although the tests were only using 1 or 2 cores. The first file is a bunch of sshd logs, averaging 98 bytes per message. The second is a Cisco ASA log file, averaging 180 bytes per message. Last is a mix of ASA, sshd and sudo logs, averaging 136 bytes per message.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  $ ./sequence bench scan -i ../../data/sshd.all
+  Scanned 212897 messages in 0.78 secs, ~ 272869.35 msgs/sec
+
+  $ ./sequence bench scan -i ../../data/allasa.log
+  Scanned 234815 messages in 1.43 secs, ~ 163827.61 msgs/sec
+
+  $ ./sequence bench scan -i ../../data/allasassh.log
+  Scanned 447745 messages in 2.27 secs, ~ 197258.42 msgs/sec
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Performance can be improved by adding more cores:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  $ GOMAXPROCS=2 ./sequence bench scan -i ../../data/sshd.all -w 2
+  Scanned 212897 messages in 0.43 secs, ~ 496961.52 msgs/sec
+
+  $ GOMAXPROCS=2 ./sequenceo bench scan -i ../../data/allasa.log -w 2
+  Scanned 234815 messages in 0.80 secs, ~ 292015.98 msgs/sec
+
+  $ GOMAXPROCS=2 ./sequence bench scan -i ../../data/allasassh.log -w 2
+  Scanned 447745 messages in 1.20 secs, ~ 373170.45 msgs/sec
+&lt;/code&gt;&lt;/pre&gt;
+</description>
+    </item>
     
     <item>
       <title>Analyzer</title>
@@ -192,6 +788,316 @@ object = [
 &lt;h4 id=&#34;6-scanning-for-ip-port-or-ip-port-pairs:029e5400481933e044356e0e58bbed76&#34;&gt;6. Scanning for ip/port or ip:port Pairs&lt;/h4&gt;
 
 &lt;p&gt;Finally, after all that, we scan through the sequence again, and identify any numbers that follow an IP address, but separated by either a &amp;ldquo;/&amp;rdquo; or &amp;ldquo;:&amp;ldquo;. Then we label these numbers as either &lt;code&gt;%srcport%&lt;/code&gt; or &lt;code&gt;%dstport%&lt;/code&gt; based on how the previous IP address is labeled.&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Parser</title>
+      <link>http://sequencer.io/manual/parser/</link>
+      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
+      
+      <guid>http://sequencer.io/manual/parser/</guid>
+      <description>&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;parser&lt;/em&gt; takes the rules generated by the analyzer (and updated/corrected by some human) as well as the &lt;em&gt;sequences&lt;/em&gt; returned by the &lt;em&gt;scanner&lt;/em&gt; for log messages, and will identify the matching rule. Based on the matching rule, the &lt;em&gt;parser&lt;/em&gt; will tag all the recognized tokens with a semantic tag, as defined by the user.&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Command</title>
+      <link>http://sequencer.io/manual/command/</link>
+      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
+      
+      <guid>http://sequencer.io/manual/command/</guid>
+      <description>
+
+&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; command is developed to demonstrate the use of this package. You can find it in the &lt;code&gt;sequence&lt;/code&gt; directory. The &lt;code&gt;sequence&lt;/code&gt; command implements the &lt;em&gt;sequential semantic log parser&lt;/em&gt;.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;Usage:
+  sequence [command]
+
+Available Commands:
+  scan                      scan will tokenize a log file or message and output a list of tokens
+  analyze                   analyze will analyze a log file and output a list of patterns that will match all the log messages
+  parse                     parse will parse a log file and output a list of parsed tokens for each of the log messages
+  bench                     benchmark scanning or parsing of a log file, no output is provided
+  help [command]            Help about any command
+
+ Available Flags:
+  -c, --config=&amp;quot;./sequence.toml&amp;quot;: TOML-formatted configuration file
+  -f, --fmt=&amp;quot;general&amp;quot;: format of the message to tokenize, can be &#39;json&#39; or &#39;general&#39;
+  -h, --help=false: help for sequence
+  -i, --infile=&amp;quot;&amp;quot;: input file, required
+  -o, --outfile=&amp;quot;&amp;quot;: output file, if empty, to stdout
+  -d, --patdir=&amp;quot;&amp;quot;: pattern directory,, all files in directory will be used
+  -p, --patfile=&amp;quot;&amp;quot;: initial pattern file, optional
+
+Use &amp;quot;sequence help [command]&amp;quot; for more information about that command.
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;scan:18f42655bc34c316ea561fdfae1d14c2&#34;&gt;Scan&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code&gt;Usage:
+  sequence scan [flags]
+
+ Available Flags:
+  -h, --help=false: help for scan
+  -m, --msg=&amp;quot;&amp;quot;: message to tokenize
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Example&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  $ ./sequence scan -m &amp;quot;jan 14 10:15:56 testserver sudo:    gonner : tty=pts/3 ; pwd=/home/gonner ; user=root ; command=/bin/su - ustream&amp;quot;
+  #   0: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%ts%&amp;quot;, Value=&amp;quot;jan 14 10:15:56&amp;quot; }
+  #   1: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;testserver&amp;quot; }
+  #   2: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;sudo&amp;quot; }
+  #   3: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
+  #   4: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;gonner&amp;quot; }
+  #   5: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
+  #   6: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;tty&amp;quot; }
+  #   7: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #   8: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;pts/3&amp;quot; }
+  #   9: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;;&amp;quot; }
+  #  10: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;pwd&amp;quot; }
+  #  11: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  12: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;/home/gonner&amp;quot; }
+  #  13: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;;&amp;quot; }
+  #  14: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;user&amp;quot; }
+  #  15: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  16: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;root&amp;quot; }
+  #  17: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;;&amp;quot; }
+  #  18: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;command&amp;quot; }
+  #  19: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  20: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;/bin/su&amp;quot; }
+  #  21: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;-&amp;quot; }
+  #  22: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;ustream&amp;quot; }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;parse:18f42655bc34c316ea561fdfae1d14c2&#34;&gt;Parse&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code&gt;Usage:
+  sequence parse [flags]
+
+ Available Flags:
+  -h, --help=false: help for parse
+  -i, --infile=&amp;quot;&amp;quot;: input file, required
+  -o, --outfile=&amp;quot;&amp;quot;: output file, if empty, to stdout
+  -d, --patdir=&amp;quot;&amp;quot;: pattern directory,, all files in directory will be used
+  -p, --patfile=&amp;quot;&amp;quot;: initial pattern file, required
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The following command parses a file based on existing rules. Note that the
+performance number (9570.20 msgs/sec) is mostly due to reading/writing to disk.
+To get a more realistic performance number, see the benchmark section below.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  $ ./sequence parse -d ../../patterns -i ../../data/sshd.all  -o parsed.sshd
+  Parsed 212897 messages in 22.25 secs, ~ 9570.20 msgs/sec
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This is an entry from the output file:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  Jan 15 19:39:26 jlz sshd[7778]: pam_unix(sshd:session): session opened for user jlz by (uid=0)
+  #   0: { Field=&amp;quot;%createtime%&amp;quot;, Type=&amp;quot;%ts%&amp;quot;, Value=&amp;quot;jan 15 19:39:26&amp;quot; }
+  #   1: { Field=&amp;quot;%apphost%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;jlz&amp;quot; }
+  #   2: { Field=&amp;quot;%appname%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;sshd&amp;quot; }
+  #   3: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;[&amp;quot; }
+  #   4: { Field=&amp;quot;%sessionid%&amp;quot;, Type=&amp;quot;%integer%&amp;quot;, Value=&amp;quot;7778&amp;quot; }
+  #   5: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;]&amp;quot; }
+  #   6: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
+  #   7: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;pam_unix&amp;quot; }
+  #   8: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;(&amp;quot; }
+  #   9: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;sshd&amp;quot; }
+  #  10: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
+  #  11: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;session&amp;quot; }
+  #  12: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;)&amp;quot; }
+  #  13: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
+  #  14: { Field=&amp;quot;%object%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;session&amp;quot; }
+  #  15: { Field=&amp;quot;%action%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;opened&amp;quot; }
+  #  16: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;for&amp;quot; }
+  #  17: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;user&amp;quot; }
+  #  18: { Field=&amp;quot;%dstuser%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;jlz&amp;quot; }
+  #  19: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;by&amp;quot; }
+  #  20: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;(&amp;quot; }
+  #  21: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;uid&amp;quot; }
+  #  22: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
+  #  23: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%integer%&amp;quot;, Value=&amp;quot;0&amp;quot; }
+  #  24: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;)&amp;quot; }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;benchmark:18f42655bc34c316ea561fdfae1d14c2&#34;&gt;Benchmark&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code&gt;Usage:
+  sequence bench [flags]
+
+ Available Flags:
+  -c, --cpuprofile=&amp;quot;&amp;quot;: CPU profile filename
+  -h, --help=false: help for bench
+  -i, --infile=&amp;quot;&amp;quot;: input file, required
+  -d, --patdir=&amp;quot;&amp;quot;: pattern directory,, all files in directory will be used
+  -p, --patfile=&amp;quot;&amp;quot;: pattern file, required
+  -w, --workers=1: number of parsing workers
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The following command will benchmark the parsing of two files. First file is a
+bunch of sshd logs, averaging 98 bytes per message. The second is a Cisco ASA
+log file, averaging 180 bytes per message.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;$ ./sequence bench -p ../../patterns/sshd.txt -i ../../data/sshd.all
+Parsed 212897 messages in 1.69 secs, ~ 126319.27 msgs/sec
+
+$ ./sequence bench -p ../../patterns/asa.txt -i ../../data/allasa.log
+Parsed 234815 messages in 2.89 secs, ~ 81323.41 msgs/sec
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Performance can be improved by adding more cores:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;GOMAXPROCS=2 ./sequence bench -p ../../patterns/sshd.txt -i ../../data/sshd.all -w 2
+Parsed 212897 messages in 1.00 secs, ~ 212711.83 msgs/sec
+
+$ GOMAXPROCS=2 ./sequence bench -p ../../patterns/asa.txt -i ../../data/allasa.log -w 2
+Parsed 234815 messages in 1.56 secs, ~ 150769.68 msgs/sec
+&lt;/code&gt;&lt;/pre&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Library</title>
+      <link>http://sequencer.io/manual/library/</link>
+      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
+      
+      <guid>http://sequencer.io/manual/library/</guid>
+      <description>&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;a href=&#34;https://github.com/trustpath/sequence&#34;&gt;library&lt;/a&gt; implements the concepts described in this manual.&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Patterns</title>
+      <link>http://sequencer.io/manual/patterns/</link>
+      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
+      
+      <guid>http://sequencer.io/manual/patterns/</guid>
+      <description>
+
+&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic08.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;parser&lt;/em&gt; does not use regular expression. In fact, it won&amp;rsquo;t understand any regular expression in the patterns even if you put them there. What it does recognize is a sequential pattern that follows the same format as the message it self. For fields that the analyst wants to extract, a field token of the form %fieldname% is put in its place.&lt;/p&gt;
+
+&lt;p&gt;As an example, this is pattern that&amp;rsquo;s applied to the corresponding sudo message:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;jan 15 14:07:04 testserver sudo: pam_unix(sudo:auth): password failed
+
+%msgtime% %apphost% %appname% : pam_unix ( sudo : %action% ) : %method% %status%
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this example, we are tagging six different tokens of the message with semantic fields, including:&lt;/p&gt;
+
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Field&lt;/th&gt;
+&lt;th&gt;Value&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;%msgtime%&lt;/td&gt;
+&lt;td&gt;jan 15 14:07:04&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;%apphost%&lt;/td&gt;
+&lt;td&gt;testserver&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;%appname%&lt;/td&gt;
+&lt;td&gt;sudo&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;%action%&lt;/td&gt;
+&lt;td&gt;auth&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;%method%&lt;/td&gt;
+&lt;td&gt;password&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;%status%&lt;/td&gt;
+&lt;td&gt;failed&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;Note that it is not required to add spaces before and after the parenthesis. The parser uses the same scanner for message patters as it uses for the messages themselves, so the parenthesis will be extracted as separate tokens in both cases. It just seems to be more clear to have the spaces.&lt;/p&gt;
+
+&lt;p&gt;Here&amp;rsquo;s another longer example (which you may have to horizontall scroll to see):&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;id=firewall time=&amp;quot;2005-03-18 14:01:46&amp;quot; fw=TOPSEC priv=6 recorder=kernel type=conn policy=414 proto=TCP rule=accept src=61.167.71.244 sport=35223 dst=210.82.119.211 dport=25 duration=27 inpkt=37 outpkt=39 sent=1770 rcvd=20926 smac=00:04:c1:8b:d8:82 dmac=00:0b:5f:b2:1d:80
+
+id = %appname% time = &amp;quot; %msgtime% &amp;quot; fw = %apphost% priv = %integer% recorder = %string% type = %string% policy = %policyid% proto = %protocol% rule = %status% src = %srcip% sport = %srcport% dst = %dstip% dport = %dstport% duration = %integer% inpkt = %pktsrecv% outpkt = %pktssent% sent = %bytessent% rcvd = %bytesrecv% smac = %srcmac% dmac = %dstmac%
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;field-tokens:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Field Tokens&lt;/h3&gt;
+
+&lt;p&gt;A field token is of the format &amp;ldquo;%field:type:meta%&amp;rdquo;:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;field is the name of the field&lt;/li&gt;
+&lt;li&gt;type is the token type of the field&lt;/li&gt;
+&lt;li&gt;meta is one of the following meta characters -, +, *, where
+
+&lt;ul&gt;
+&lt;li&gt;&amp;rdquo;-&amp;rdquo; means the rest of the tokens&lt;/li&gt;
+&lt;li&gt;&amp;rdquo;+&amp;rdquo; means one or more of this token&lt;/li&gt;
+&lt;li&gt;&amp;ldquo;*&amp;rdquo; means zero or more of this token&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;A field token can take different formats. The supported formats are:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;%field%&lt;/li&gt;
+&lt;li&gt;%type%&lt;/li&gt;
+&lt;li&gt;%field:type%&lt;/li&gt;
+&lt;li&gt;%field:meta%&lt;/li&gt;
+&lt;li&gt;%type:meta%&lt;/li&gt;
+&lt;li&gt;%field:type:meta%&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h4 id=&#34;using-the-meta-character:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &lt;code&gt;-&lt;/code&gt; Meta Character&lt;/h4&gt;
+
+&lt;p&gt;Below is an example of how to use the &lt;code&gt;-&lt;/code&gt; meta character:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;jan 14 10:15:56 testserver sudo:    gonner : tty=pts/3 ; pwd=/home/gonner ; user=root ; command=/bin/su - ustream
+
+%msgtime% %apphost% %appname% : %srcuser% : tty = %string% ; pwd = %string% ; user = %dstuser% ; command = %method:-%
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this example, most field tokens are specified in the %field% format, except for the last one. The last token, &lt;code&gt;%method:-&lt;/code&gt;, specifies that the &lt;code&gt;%method%&lt;/code&gt; token should consume the rest of the tokens. This means the &lt;code&gt;%method%&lt;/code&gt; token will have the value of &lt;code&gt;/bin/su - ustream&lt;/code&gt;. This field token can also be specified as &lt;code&gt;%method::-&lt;/code&gt;.&lt;/p&gt;
+
+&lt;h4 id=&#34;using-the-meta-character-1:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &lt;code&gt;+&lt;/code&gt; Meta Character&lt;/h4&gt;
+
+&lt;p&gt;Here&amp;rsquo;s an example of using the &lt;code&gt;+&lt;/code&gt; meta character:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;Feb  8 21:51:10 mail postfix/pipe[84059]: 440682230: to=&amp;lt;userB@company.office&amp;gt;, orig_to=&amp;lt;userB@company.biz&amp;gt;, relay=dovecot, delay=0.9, delays=0.87/0/0/0.03, dsn=2.0.0, status=sent (delivered via dovecot service)
+
+%msgtime% %apphost% %appname% [ %sessionid% ] : %msgid:integer% : to = &amp;lt; %srcemail% &amp;gt; , orig_to = &amp;lt; %string% &amp;gt; , relay = %string% , delay = %float% , delays = %string% , dsn = %string% , status = %status% ( %reason::+% )
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this example, the 2nd to the last token is &lt;code&gt;%reason::+%&lt;/code&gt;. This means the &lt;code&gt;%reason%&lt;/code&gt; field token will consume one or more tokens until the close parenthesis. This can also be written as &lt;code&gt;%reason:+%&lt;/code&gt;.&lt;/p&gt;
+
+&lt;h4 id=&#34;using-the-meta-character-2:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &lt;code&gt;*&lt;/code&gt; Meta Character&lt;/h4&gt;
+
+&lt;p&gt;Here&amp;rsquo;s an example of using the &lt;code&gt;*&lt;/code&gt; meta character:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;id=firewall time=&amp;quot;2005-03-18 14:01:46&amp;quot; fw=TOPSEC priv= recorder=kernel type=conn policy=414 proto=TCP rule=accept src=61.167.71.244 sport=35223 dst=210.82.119.211 dport=25 duration=27 inpkt=37 outpkt=39 sent=1770 rcvd=20926 smac=00:04:c1:8b:d8:82 dmac=00:0b:5f:b2:1d:80
+
+id = %appname% time = &amp;quot; %msgtime% &amp;quot; fw = %apphost% priv = %integer:*% recorder = %string% type = %string% policy = %policyid% proto = %protocol% rule = %status% src = %srcip% sport = %srcport% dst = %dstip% dport = %dstport% duration = %integer% inpkt = %pktsrecv% outpkt = %pktssent% sent = %bytessent% rcvd = %bytesrecv% smac = %srcmac% dmac = %dstmac%
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this example, part of the pattern is specified as &lt;code&gt;priv = %integer:*%&lt;/code&gt;. This means the value for &lt;code&gt;priv&lt;/code&gt; may or may not be there. This can also be written as &lt;code&gt;%:integer:*%&lt;/code&gt;.&lt;/p&gt;
 </description>
     </item>
     
@@ -449,159 +1355,251 @@ fields = [
     </item>
     
     <item>
-      <title>Sequence Command</title>
-      <link>http://sequencer.io/manual/command/</link>
+      <title>Time Formats</title>
+      <link>http://sequencer.io/manual/timeformats/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://sequencer.io/manual/command/</guid>
-      <description>
+      <guid>http://sequencer.io/manual/timeformats/</guid>
+      <description>&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic06.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
 
-&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; command is developed to demonstrate the use of this package. You can find it in the &lt;code&gt;sequence&lt;/code&gt; directory. The &lt;code&gt;sequence&lt;/code&gt; command implements the &lt;em&gt;sequential semantic log parser&lt;/em&gt;.&lt;/p&gt;
+&lt;p&gt;One of the most difficult task in log parsing is recognizing and understanding the different time formats. Syslog RFCs have defined a couple formats that the syslog servers abide to. However, there are many log messages out there that don&amp;rsquo;t use the two syslog time formats.&lt;/p&gt;
 
-&lt;pre&gt;&lt;code&gt;Usage:
-  sequence [command]
+&lt;p&gt;&lt;code&gt;sequence&lt;/code&gt; currently automatically recognizes 42 different time formats as listed below. More will be added, so the best (authoritative) place to check is &lt;a href=&#34;https://github.com/trustpath/sequence&#34;&gt;sequence.toml&lt;/a&gt; in the github repo.&lt;/p&gt;
 
-Available Commands:
-  scan                      scan will tokenize a log file or message and output a list of tokens
-  analyze                   analyze will analyze a log file and output a list of patterns that will match all the log messages
-  parse                     parse will parse a log file and output a list of parsed tokens for each of the log messages
-  bench                     benchmark scanning or parsing of a log file, no output is provided
-  help [command]            Help about any command
+&lt;p&gt;When writing rules, analysts don&amp;rsquo;t need to know what time formats are used in the log messages. They just need to know that there&amp;rsquo;s a time at a certain location of the message. &lt;code&gt;sequence&lt;/code&gt; will automatically detecting the time format, and normalizing the time formats into a single one.&lt;/p&gt;
 
- Available Flags:
-  -c, --config=&amp;quot;./sequence.toml&amp;quot;: TOML-formatted configuration file
-  -f, --fmt=&amp;quot;general&amp;quot;: format of the message to tokenize, can be &#39;json&#39; or &#39;general&#39;
-  -h, --help=false: help for sequence
-  -i, --infile=&amp;quot;&amp;quot;: input file, required
-  -o, --outfile=&amp;quot;&amp;quot;: output file, if empty, to stdout
-  -d, --patdir=&amp;quot;&amp;quot;: pattern directory,, all files in directory will be used
-  -p, --patfile=&amp;quot;&amp;quot;: initial pattern file, optional
+&lt;p&gt;In the table below, the reference time used in the layouts is the specific time:&lt;/p&gt;
 
-Use &amp;quot;sequence help [command]&amp;quot; for more information about that command.
+&lt;pre&gt;&lt;code&gt;Mon Jan 2 15:04:05 MST 2006
 &lt;/code&gt;&lt;/pre&gt;
 
-&lt;h3 id=&#34;scan:18f42655bc34c316ea561fdfae1d14c2&#34;&gt;Scan&lt;/h3&gt;
+&lt;p&gt;which is Unix time 1136239445. Since MST is GMT-0700, the reference time can be thought of as&lt;/p&gt;
 
-&lt;pre&gt;&lt;code&gt;Usage:
-  sequence scan [flags]
-
- Available Flags:
-  -h, --help=false: help for scan
-  -m, --msg=&amp;quot;&amp;quot;: message to tokenize
+&lt;pre&gt;&lt;code&gt;01/02 03:04:05PM &#39;06 -0700
 &lt;/code&gt;&lt;/pre&gt;
 
-&lt;p&gt;Example&lt;/p&gt;
+&lt;p&gt;The best way to remember this is that the numbers are contiguous: 01, 02, 03, 04, 05, 06, 07 in the above format. Make sure you write the time format correctly as it will be used to normalize the different time stamps.&lt;/p&gt;
 
-&lt;pre&gt;&lt;code&gt;  $ ./sequence scan -m &amp;quot;jan 14 10:15:56 testserver sudo:    gonner : tty=pts/3 ; pwd=/home/gonner ; user=root ; command=/bin/su - ustream&amp;quot;
-  #   0: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%ts%&amp;quot;, Value=&amp;quot;jan 14 10:15:56&amp;quot; }
-  #   1: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;testserver&amp;quot; }
-  #   2: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;sudo&amp;quot; }
-  #   3: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
-  #   4: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;gonner&amp;quot; }
-  #   5: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
-  #   6: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;tty&amp;quot; }
-  #   7: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #   8: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;pts/3&amp;quot; }
-  #   9: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;;&amp;quot; }
-  #  10: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;pwd&amp;quot; }
-  #  11: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #  12: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;/home/gonner&amp;quot; }
-  #  13: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;;&amp;quot; }
-  #  14: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;user&amp;quot; }
-  #  15: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #  16: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;root&amp;quot; }
-  #  17: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;;&amp;quot; }
-  #  18: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;command&amp;quot; }
-  #  19: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #  20: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;/bin/su&amp;quot; }
-  #  21: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;-&amp;quot; }
-  #  22: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;ustream&amp;quot; }
-&lt;/code&gt;&lt;/pre&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;#&lt;/th&gt;
+&lt;th&gt;Time Formats&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
 
-&lt;h3 id=&#34;parse:18f42655bc34c316ea561fdfae1d14c2&#34;&gt;Parse&lt;/h3&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;1.&lt;/td&gt;
+&lt;td&gt;Mon Jan _2 15:04:05 2006&lt;/td&gt;
+&lt;/tr&gt;
 
-&lt;pre&gt;&lt;code&gt;Usage:
-  sequence parse [flags]
+&lt;tr&gt;
+&lt;td&gt;2.&lt;/td&gt;
+&lt;td&gt;Mon Jan _2 15:04:05 MST 2006&lt;/td&gt;
+&lt;/tr&gt;
 
- Available Flags:
-  -h, --help=false: help for parse
-  -i, --infile=&amp;quot;&amp;quot;: input file, required
-  -o, --outfile=&amp;quot;&amp;quot;: output file, if empty, to stdout
-  -d, --patdir=&amp;quot;&amp;quot;: pattern directory,, all files in directory will be used
-  -p, --patfile=&amp;quot;&amp;quot;: initial pattern file, required
-&lt;/code&gt;&lt;/pre&gt;
+&lt;tr&gt;
+&lt;td&gt;3.&lt;/td&gt;
+&lt;td&gt;Mon Jan 02 15:04:05 -0700 2006&lt;/td&gt;
+&lt;/tr&gt;
 
-&lt;p&gt;The following command parses a file based on existing rules. Note that the
-performance number (9570.20 msgs/sec) is mostly due to reading/writing to disk.
-To get a more realistic performance number, see the benchmark section below.&lt;/p&gt;
+&lt;tr&gt;
+&lt;td&gt;4.&lt;/td&gt;
+&lt;td&gt;02 Jan 06 15:04 MST&lt;/td&gt;
+&lt;/tr&gt;
 
-&lt;pre&gt;&lt;code&gt;  $ ./sequence parse -d ../../patterns -i ../../data/sshd.all  -o parsed.sshd
-  Parsed 212897 messages in 22.25 secs, ~ 9570.20 msgs/sec
-&lt;/code&gt;&lt;/pre&gt;
+&lt;tr&gt;
+&lt;td&gt;5.&lt;/td&gt;
+&lt;td&gt;02 Jan 06 15:04 -0700&lt;/td&gt;
+&lt;/tr&gt;
 
-&lt;p&gt;This is an entry from the output file:&lt;/p&gt;
+&lt;tr&gt;
+&lt;td&gt;6.&lt;/td&gt;
+&lt;td&gt;Monday, 02-Jan-06 15:04:05 MST&lt;/td&gt;
+&lt;/tr&gt;
 
-&lt;pre&gt;&lt;code&gt;  Jan 15 19:39:26 jlz sshd[7778]: pam_unix(sshd:session): session opened for user jlz by (uid=0)
-  #   0: { Field=&amp;quot;%createtime%&amp;quot;, Type=&amp;quot;%ts%&amp;quot;, Value=&amp;quot;jan 15 19:39:26&amp;quot; }
-  #   1: { Field=&amp;quot;%apphost%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;jlz&amp;quot; }
-  #   2: { Field=&amp;quot;%appname%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;sshd&amp;quot; }
-  #   3: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;[&amp;quot; }
-  #   4: { Field=&amp;quot;%sessionid%&amp;quot;, Type=&amp;quot;%integer%&amp;quot;, Value=&amp;quot;7778&amp;quot; }
-  #   5: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;]&amp;quot; }
-  #   6: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
-  #   7: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;pam_unix&amp;quot; }
-  #   8: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;(&amp;quot; }
-  #   9: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;sshd&amp;quot; }
-  #  10: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
-  #  11: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;session&amp;quot; }
-  #  12: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;)&amp;quot; }
-  #  13: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
-  #  14: { Field=&amp;quot;%object%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;session&amp;quot; }
-  #  15: { Field=&amp;quot;%action%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;opened&amp;quot; }
-  #  16: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;for&amp;quot; }
-  #  17: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;user&amp;quot; }
-  #  18: { Field=&amp;quot;%dstuser%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;jlz&amp;quot; }
-  #  19: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;by&amp;quot; }
-  #  20: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;(&amp;quot; }
-  #  21: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;uid&amp;quot; }
-  #  22: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #  23: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%integer%&amp;quot;, Value=&amp;quot;0&amp;quot; }
-  #  24: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;)&amp;quot; }
-&lt;/code&gt;&lt;/pre&gt;
+&lt;tr&gt;
+&lt;td&gt;7.&lt;/td&gt;
+&lt;td&gt;Mon, 02 Jan 2006 15:04:05 MST&lt;/td&gt;
+&lt;/tr&gt;
 
-&lt;h3 id=&#34;benchmark:18f42655bc34c316ea561fdfae1d14c2&#34;&gt;Benchmark&lt;/h3&gt;
+&lt;tr&gt;
+&lt;td&gt;8.&lt;/td&gt;
+&lt;td&gt;Mon, 02 Jan 2006 15:04:05 -0700&lt;/td&gt;
+&lt;/tr&gt;
 
-&lt;pre&gt;&lt;code&gt;Usage:
-  sequence bench [flags]
+&lt;tr&gt;
+&lt;td&gt;9.&lt;/td&gt;
+&lt;td&gt;2006-01-02T15:04:05Z07:00&lt;/td&gt;
+&lt;/tr&gt;
 
- Available Flags:
-  -c, --cpuprofile=&amp;quot;&amp;quot;: CPU profile filename
-  -h, --help=false: help for bench
-  -i, --infile=&amp;quot;&amp;quot;: input file, required
-  -d, --patdir=&amp;quot;&amp;quot;: pattern directory,, all files in directory will be used
-  -p, --patfile=&amp;quot;&amp;quot;: pattern file, required
-  -w, --workers=1: number of parsing workers
-&lt;/code&gt;&lt;/pre&gt;
+&lt;tr&gt;
+&lt;td&gt;10.&lt;/td&gt;
+&lt;td&gt;2006-01-02T15:04:05.999999999Z07:00&lt;/td&gt;
+&lt;/tr&gt;
 
-&lt;p&gt;The following command will benchmark the parsing of two files. First file is a
-bunch of sshd logs, averaging 98 bytes per message. The second is a Cisco ASA
-log file, averaging 180 bytes per message.&lt;/p&gt;
+&lt;tr&gt;
+&lt;td&gt;11.&lt;/td&gt;
+&lt;td&gt;Jan _2 15:04:05&lt;/td&gt;
+&lt;/tr&gt;
 
-&lt;pre&gt;&lt;code&gt;$ ./sequence bench -p ../../patterns/sshd.txt -i ../../data/sshd.all
-Parsed 212897 messages in 1.69 secs, ~ 126319.27 msgs/sec
+&lt;tr&gt;
+&lt;td&gt;12.&lt;/td&gt;
+&lt;td&gt;Jan _2 15:04:05.000&lt;/td&gt;
+&lt;/tr&gt;
 
-$ ./sequence bench -p ../../patterns/asa.txt -i ../../data/allasa.log
-Parsed 234815 messages in 2.89 secs, ~ 81323.41 msgs/sec
-&lt;/code&gt;&lt;/pre&gt;
+&lt;tr&gt;
+&lt;td&gt;13.&lt;/td&gt;
+&lt;td&gt;Jan _2 15:04:05.000000&lt;/td&gt;
+&lt;/tr&gt;
 
-&lt;p&gt;Performance can be improved by adding more cores:&lt;/p&gt;
+&lt;tr&gt;
+&lt;td&gt;14.&lt;/td&gt;
+&lt;td&gt;Jan _2 15:04:05.000000000&lt;/td&gt;
+&lt;/tr&gt;
 
-&lt;pre&gt;&lt;code&gt;GOMAXPROCS=2 ./sequence bench -p ../../patterns/sshd.txt -i ../../data/sshd.all -w 2
-Parsed 212897 messages in 1.00 secs, ~ 212711.83 msgs/sec
+&lt;tr&gt;
+&lt;td&gt;15.&lt;/td&gt;
+&lt;td&gt;_2/Jan/2006:15:04:05 -0700&lt;/td&gt;
+&lt;/tr&gt;
 
-$ GOMAXPROCS=2 ./sequence bench -p ../../patterns/asa.txt -i ../../data/allasa.log -w 2
-Parsed 234815 messages in 1.56 secs, ~ 150769.68 msgs/sec
-&lt;/code&gt;&lt;/pre&gt;
+&lt;tr&gt;
+&lt;td&gt;16.&lt;/td&gt;
+&lt;td&gt;Jan 2, 2006 3:04:05 PM&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;17.&lt;/td&gt;
+&lt;td&gt;Jan 2 2006 15:04:05&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;18.&lt;/td&gt;
+&lt;td&gt;Jan 2 15:04:05 2006&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;19.&lt;/td&gt;
+&lt;td&gt;Jan 2 15:04:05 -0700&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;20.&lt;/td&gt;
+&lt;td&gt;2006-01-02 15:04:05,000 -0700&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;21.&lt;/td&gt;
+&lt;td&gt;2006-01-02 15:04:05 -0700&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;22.&lt;/td&gt;
+&lt;td&gt;2006-01-02 15:04:05-0700&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;23.&lt;/td&gt;
+&lt;td&gt;2006-01-02 15:04:05,000&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;24.&lt;/td&gt;
+&lt;td&gt;2006-01-02 15:04:05&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;25.&lt;/td&gt;
+&lt;td&gt;2006/01/02 15:04:05&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;26.&lt;/td&gt;
+&lt;td&gt;06-01-02 15:04:05,000 -0700&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;27.&lt;/td&gt;
+&lt;td&gt;06-01-02 15:04:05,000&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;28.&lt;/td&gt;
+&lt;td&gt;06-01-02 15:04:05&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;29.&lt;/td&gt;
+&lt;td&gt;06/01/02 15:04:05&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;30.&lt;/td&gt;
+&lt;td&gt;15:04:05,000&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;31.&lt;/td&gt;
+&lt;td&gt;1/2/2006 3:04:05 PM&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;32.&lt;/td&gt;
+&lt;td&gt;1/2/06 3:04:05.000 PM&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;33.&lt;/td&gt;
+&lt;td&gt;1/2/2006 15:04&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;34.&lt;/td&gt;
+&lt;td&gt;02Jan2006 03:04:05&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;35.&lt;/td&gt;
+&lt;td&gt;Jan _2, 2006 3:04:05 PM&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;36.&lt;/td&gt;
+&lt;td&gt;2006-01-02T15:04:05Z&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;37.&lt;/td&gt;
+&lt;td&gt;2006-01-02T15:04:05-0700&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;38.&lt;/td&gt;
+&lt;td&gt;2006-01-02T15:04:05.999-0700&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;39.&lt;/td&gt;
+&lt;td&gt;2006-01-02&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;40.&lt;/td&gt;
+&lt;td&gt;15:04:05&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;41.&lt;/td&gt;
+&lt;td&gt;2006-01-02T15:04:05.999999Z&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;42.&lt;/td&gt;
+&lt;td&gt;02/Jan/2006:15:04:05.999&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
 </description>
     </item>
     
@@ -948,213 +1946,6 @@ fields = [
     </item>
     
     <item>
-      <title>Sequence Library</title>
-      <link>http://sequencer.io/manual/library/</link>
-      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
-      
-      <guid>http://sequencer.io/manual/library/</guid>
-      <description>&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;a href=&#34;https://github.com/trustpath/sequence&#34;&gt;library&lt;/a&gt; implements the concepts described in this manual.&lt;/p&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>Parser</title>
-      <link>http://sequencer.io/manual/parser/</link>
-      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
-      
-      <guid>http://sequencer.io/manual/parser/</guid>
-      <description>&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;parser&lt;/em&gt; takes the rules generated by the analyzer (and updated/corrected by some human) as well as the &lt;em&gt;sequences&lt;/em&gt; returned by the &lt;em&gt;scanner&lt;/em&gt; for log messages, and will identify the matching rule. Based on the matching rule, the &lt;em&gt;parser&lt;/em&gt; will tag all the recognized tokens with a semantic tag, as defined by the user.&lt;/p&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>Introduction</title>
-      <link>http://sequencer.io/manual/introduction/</link>
-      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
-      
-      <guid>http://sequencer.io/manual/introduction/</guid>
-      <description>
-
-&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic05.jpg&#34; alt=&#34;Obligatory Log Picture&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;sequence&lt;/code&gt; is a &lt;em&gt;high performance sequential log analyzer and parser&lt;/em&gt;. It &lt;em&gt;sequentially&lt;/em&gt; goes through a log message, &lt;em&gt;parses&lt;/em&gt; out the meaningful parts, without the use regular expressions. It can achieve &lt;em&gt;high performance&lt;/em&gt; parsing of &lt;strong&gt;100,000 - 200,000 messages per second (MPS)&lt;/strong&gt; without the need to separate parsing rules by log source type.&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;&lt;code&gt;sequence&lt;/code&gt; is currently under active development and should be considered unstable until further notice.&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;If you have a set of logs you would like me to test out, please feel free to &lt;a href=&#34;https://github.com/strace/sequence/issues&#34;&gt;open an issue&lt;/a&gt; and we can arrange a way for me to download and test your logs.&lt;/strong&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;motivation:2767292a573dc549b9b4297b701af3ab&#34;&gt;Motivation&lt;/h3&gt;
-
-&lt;p&gt;Log messages are notoriusly difficult to parse because they all have different formats. Industries (see Splunk, ArcSight, Tibco LogLogic, Sumo Logic, Logentries, Loggly, LogRhythm, etc etc etc) have been built to solve the problems of parsing, analyzing and understanding log messages.&lt;/p&gt;
-
-&lt;p&gt;Let&amp;rsquo;s say you have a bunch of log files you like to parse. The first problem you will typically run into is you have no way of telling how many DIFFERENT types of messages there are, so you have no idea how much work there will be to develop rules to parse all the messages. Not only that, you have hundreds of thousands, if not  millions of messages, in front of you, and you have no idea what messages are worth parsing, and what&amp;rsquo;s not.&lt;/p&gt;
-
-&lt;p&gt;The typical workflow is develop a set of regular expressions and keeps testing against the logs until some magical moment where all the logs you want parsed are parsed. Ask anyone who does this for a living and they will tell you this process is long, frustrating and error-prone.&lt;/p&gt;
-
-&lt;p&gt;Sequence is developed to make analyzing and parsing log messages a lot easier and faster.&lt;/p&gt;
-
-&lt;h3 id=&#34;existing-approaches:2767292a573dc549b9b4297b701af3ab&#34;&gt;Existing Approaches&lt;/h3&gt;
-
-&lt;p&gt;The industry has came up with a couple of different approaches to solving the log parsing problem. In a way, you can say the log parsing problem has been solved, because analysts have a lot of different tools to choose from when they need to understand logs.&lt;/p&gt;
-
-&lt;p&gt;Commercially, there are companies such as Splunk, ArcSight, Tibco LogLogic, SumoLogic, LogEntries, Loggly, LogRhythm, etc etc etc that can provide you either an on-premise or in-the-cloud (SaaS) solution. They provide different capabilities and feature sets depending on the primary use case you are targetting.&lt;/p&gt;
-
-&lt;p&gt;Open source wise, you have tools such as ElasticSearch, Greylog2, OSSIM, and a few others that wants to provide you end-to-end capabilities similar to the commercial offerings. There are also libraries such as &lt;a href=&#34;http://www.liblognorm.com/&#34;&gt;liblognorm&lt;/a&gt; and &lt;a href=&#34;http://logstash.net/&#34;&gt;logstash&lt;/a&gt; you can use to build your own tools.&lt;/p&gt;
-
-&lt;p&gt;And then there&amp;rsquo;s Fedora&amp;rsquo;s &lt;a href=&#34;https://fedorahosted.org/lumberjack/&#34;&gt;Project Lumberjack&lt;/a&gt;, which &amp;ldquo;is an open-source project to update and enhance the event log architecture&amp;rdquo; and &amp;ldquo;aims to improve the creation and standardize the content of event logs by implementing the concepts and specifications proposed by the ​Common Event Expression (CEE).&amp;rdquo;&lt;/p&gt;
-
-&lt;p&gt;Unfortunately all of these tools have one or more of the following problems.&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;First&lt;/em&gt;, it looks like many of these open source efforts have all been abandoned or put in hibernation, and haven&amp;rsquo;t been updated since 2012 or 2013. liblognrom did put out &lt;a href=&#34;http://www.liblognorm.com/news/&#34;&gt;a couple of updates&lt;/a&gt; in the past couple of years.&lt;/p&gt;
-
-&lt;p&gt;It is understandable. Log parsing is &lt;strong&gt;BORING&lt;/strong&gt;. I mean, who wants to sit there and stare at logs all day and try to come up with regular expressions or other types of parsing rules? LogLogic used to have a team of LogLabs analysts that did that, and I have to say I truly appreciated their effort and patience, because I cannot do that.&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;Second&lt;/em&gt;, many of these commercial and open source tools uses regular expression to parse log messages. This approach is widely adopted because regular expression (regex) is a known quantity. Many administrators already know regex to some extend, and tools are widely available to interpret regex. In the early days of log analysis, Perl was used most often, so most rules you see are written in PCRE, or Perl Compatible Regular Expression. However, the process of writing regex rules is long, frustrating, and error-prone.&lt;/p&gt;
-
-&lt;p&gt;Even after you have developed a set of regular expressions that match the original set of messages, if new messages come in, you will have to determine which of the new messages need to be parsed. And if you develop a new set of regular expressions to parse those new messages, you still have no idea if the regular expressions will conflict with the ones you wrote before. If you write your regex parsers too liberally, it can easily parse the wrong messages.&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;Third&lt;/em&gt;, even after the regex rules are written, the performance is far from acceptable. This is mainly due to the fact that there&amp;rsquo;s no way to match multiple regular expressions at the same time. The engine would have to go through each individual rule separately. It can typically parse several thousands messages per second. Given enough CPU resources on a large enough machine, regex parsers can probably parse tens of thousands of messages per second. Even to achieve this type of performance, you will likely need to limit the number of regular expressions the parser has. The more regex rules, the slower the parser will go.&lt;/p&gt;
-
-&lt;p&gt;To work around this performance issue, companies have tried to separate the regex rules for different log message types into different parsers. For example, they will have a parser for Cisco ASA logs, a parser for sshd logs, a parser for Apache logs, etc etc. And then they will require the analysts to tell them which parser to use (usually by indicating the log source type of the originating IP address or host.)&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;Last but not least&lt;/em&gt;, none of the existing tools can help analysts determine what patterns to write in order to parse their log files. Large companies can sometimes generate hundreds of gigabytes, if not terabytes, of data and billions of log messages per day. Sometimes it will take a team of analysts hundreds of hours to comb through log files, develop regex rules, test for conflicts and then repeat this whole process.&lt;/p&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>Message Patterns</title>
-      <link>http://sequencer.io/manual/patterns/</link>
-      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
-      
-      <guid>http://sequencer.io/manual/patterns/</guid>
-      <description>
-
-&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic08.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;parser&lt;/em&gt; does not use regular expression. In fact, it won&amp;rsquo;t understand any regular expression in the patterns even if you put them there. What it does recognize is a sequential pattern that follows the same format as the message it self. For fields that the analyst wants to extract, a field token of the form %fieldname% is put in its place.&lt;/p&gt;
-
-&lt;p&gt;As an example, this is pattern that&amp;rsquo;s applied to the corresponding sudo message:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;jan 15 14:07:04 testserver sudo: pam_unix(sudo:auth): password failed
-
-%msgtime% %apphost% %appname% : pam_unix ( sudo : %action% ) : %method% %status%
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;In this example, we are tagging six different tokens of the message with semantic fields, including:&lt;/p&gt;
-
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;Field&lt;/th&gt;
-&lt;th&gt;Value&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;%msgtime%&lt;/td&gt;
-&lt;td&gt;jan 15 14:07:04&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;%apphost%&lt;/td&gt;
-&lt;td&gt;testserver&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;%appname%&lt;/td&gt;
-&lt;td&gt;sudo&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;%action%&lt;/td&gt;
-&lt;td&gt;auth&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;%method%&lt;/td&gt;
-&lt;td&gt;password&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;%status%&lt;/td&gt;
-&lt;td&gt;failed&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-
-&lt;p&gt;Note that it is not required to add spaces before and after the parenthesis. The parser uses the same scanner for message patters as it uses for the messages themselves, so the parenthesis will be extracted as separate tokens in both cases. It just seems to be more clear to have the spaces.&lt;/p&gt;
-
-&lt;p&gt;Here&amp;rsquo;s another longer example (which you may have to horizontall scroll to see):&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;id=firewall time=&amp;quot;2005-03-18 14:01:46&amp;quot; fw=TOPSEC priv=6 recorder=kernel type=conn policy=414 proto=TCP rule=accept src=61.167.71.244 sport=35223 dst=210.82.119.211 dport=25 duration=27 inpkt=37 outpkt=39 sent=1770 rcvd=20926 smac=00:04:c1:8b:d8:82 dmac=00:0b:5f:b2:1d:80
-
-id = %appname% time = &amp;quot; %msgtime% &amp;quot; fw = %apphost% priv = %integer% recorder = %string% type = %string% policy = %policyid% proto = %protocol% rule = %status% src = %srcip% sport = %srcport% dst = %dstip% dport = %dstport% duration = %integer% inpkt = %pktsrecv% outpkt = %pktssent% sent = %bytessent% rcvd = %bytesrecv% smac = %srcmac% dmac = %dstmac%
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h3 id=&#34;field-tokens:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Field Tokens&lt;/h3&gt;
-
-&lt;p&gt;A field token is of the format &amp;ldquo;%field:type:meta%&amp;rdquo;:&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;field is the name of the field&lt;/li&gt;
-&lt;li&gt;type is the token type of the field&lt;/li&gt;
-&lt;li&gt;meta is one of the following meta characters -, +, *, where
-
-&lt;ul&gt;
-&lt;li&gt;&amp;rdquo;-&amp;rdquo; means the rest of the tokens&lt;/li&gt;
-&lt;li&gt;&amp;rdquo;+&amp;rdquo; means one or more of this token&lt;/li&gt;
-&lt;li&gt;&amp;ldquo;*&amp;rdquo; means zero or more of this token&lt;/li&gt;
-&lt;/ul&gt;&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;A field token can take different formats. The supported formats are:&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;%field%&lt;/li&gt;
-&lt;li&gt;%type%&lt;/li&gt;
-&lt;li&gt;%field:type%&lt;/li&gt;
-&lt;li&gt;%field:meta%&lt;/li&gt;
-&lt;li&gt;%type:meta%&lt;/li&gt;
-&lt;li&gt;%field:type:meta%&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;h4 id=&#34;using-the-meta-character:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &lt;code&gt;-&lt;/code&gt; Meta Character&lt;/h4&gt;
-
-&lt;p&gt;Below is an example of how to use the &lt;code&gt;-&lt;/code&gt; meta character:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;jan 14 10:15:56 testserver sudo:    gonner : tty=pts/3 ; pwd=/home/gonner ; user=root ; command=/bin/su - ustream
-
-%msgtime% %apphost% %appname% : %srcuser% : tty = %string% ; pwd = %string% ; user = %dstuser% ; command = %method:-%
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;In this example, most field tokens are specified in the %field% format, except for the last one. The last token, &lt;code&gt;%method:-&lt;/code&gt;, specifies that the &lt;code&gt;%method%&lt;/code&gt; token should consume the rest of the tokens. This means the &lt;code&gt;%method%&lt;/code&gt; token will have the value of &lt;code&gt;/bin/su - ustream&lt;/code&gt;. This field token can also be specified as &lt;code&gt;%method::-&lt;/code&gt;.&lt;/p&gt;
-
-&lt;h4 id=&#34;using-the-meta-character-1:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &lt;code&gt;+&lt;/code&gt; Meta Character&lt;/h4&gt;
-
-&lt;p&gt;Here&amp;rsquo;s an example of using the &lt;code&gt;+&lt;/code&gt; meta character:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;Feb  8 21:51:10 mail postfix/pipe[84059]: 440682230: to=&amp;lt;userB@company.office&amp;gt;, orig_to=&amp;lt;userB@company.biz&amp;gt;, relay=dovecot, delay=0.9, delays=0.87/0/0/0.03, dsn=2.0.0, status=sent (delivered via dovecot service)
-
-%msgtime% %apphost% %appname% [ %sessionid% ] : %msgid:integer% : to = &amp;lt; %srcemail% &amp;gt; , orig_to = &amp;lt; %string% &amp;gt; , relay = %string% , delay = %float% , delays = %string% , dsn = %string% , status = %status% ( %reason::+% )
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;In this example, the 2nd to the last token is &lt;code&gt;%reason::+%&lt;/code&gt;. This means the &lt;code&gt;%reason%&lt;/code&gt; field token will consume one or more tokens until the close parenthesis. This can also be written as &lt;code&gt;%reason:+%&lt;/code&gt;.&lt;/p&gt;
-
-&lt;h4 id=&#34;using-the-meta-character-2:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &lt;code&gt;*&lt;/code&gt; Meta Character&lt;/h4&gt;
-
-&lt;p&gt;Here&amp;rsquo;s an example of using the &lt;code&gt;*&lt;/code&gt; meta character:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;id=firewall time=&amp;quot;2005-03-18 14:01:46&amp;quot; fw=TOPSEC priv= recorder=kernel type=conn policy=414 proto=TCP rule=accept src=61.167.71.244 sport=35223 dst=210.82.119.211 dport=25 duration=27 inpkt=37 outpkt=39 sent=1770 rcvd=20926 smac=00:04:c1:8b:d8:82 dmac=00:0b:5f:b2:1d:80
-
-id = %appname% time = &amp;quot; %msgtime% &amp;quot; fw = %apphost% priv = %integer:*% recorder = %string% type = %string% policy = %policyid% proto = %protocol% rule = %status% src = %srcip% sport = %srcport% dst = %dstip% dport = %dstport% duration = %integer% inpkt = %pktsrecv% outpkt = %pktssent% sent = %bytessent% rcvd = %bytesrecv% smac = %srcmac% dmac = %dstmac%
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;In this example, part of the pattern is specified as &lt;code&gt;priv = %integer:*%&lt;/code&gt;. This means the value for &lt;code&gt;priv&lt;/code&gt; may or may not be there. This can also be written as &lt;code&gt;%:integer:*%&lt;/code&gt;.&lt;/p&gt;
-</description>
-    </item>
-    
-    <item>
       <title>Token Types</title>
       <link>http://sequencer.io/manual/tokens/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
@@ -1217,797 +2008,6 @@ id = %appname% time = &amp;quot; %msgtime% &amp;quot; fw = %apphost% priv = %int
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>Scanner</title>
-      <link>http://sequencer.io/manual/scanner/</link>
-      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
-      
-      <guid>http://sequencer.io/manual/scanner/</guid>
-      <description>
-
-&lt;blockquote&gt;
-&lt;p&gt;In computer science, lexical analysis is the process of converting a sequence of characters into a sequence of tokens, i.e. meaningful character strings. A program or function that performs lexical analysis is called a lexical analyzer, lexer, tokenizer, or scanner. - &lt;a href=&#34;http://en.wikipedia.org/wiki/Lexical_analysis&#34;&gt;Wikipedia&lt;/a&gt;&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;In &lt;code&gt;sequence&lt;/code&gt;, the first critical function to understanding a log message is to convert it into a sequence of valid tokens, i.e., &lt;strong&gt;meaningful&lt;/strong&gt; character strings. This function is called a &lt;em&gt;scanner&lt;/em&gt;, but it can be called a &lt;em&gt;lexical analyzer&lt;/em&gt;, &lt;em&gt;lexer&lt;/em&gt;, or &lt;em&gt;tokenizer&lt;/em&gt;. The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;scanner&lt;/em&gt; goes through log message sequentially while tokentizing each part of the message, without the use of regular expressions.&lt;/p&gt;
-
-&lt;p&gt;The biggest challenge to tokenizing is knowing where the break points are. Most log messages are free-form text, which means there&amp;rsquo;s no common structure to them. A log message &lt;em&gt;scanner&lt;/em&gt; or &lt;em&gt;tokenizer&lt;/em&gt; (we will use these terms interchangeably) must understand common components such as timestamp, URL, hex strings, IP addresses (v4 or v6), and mac addresses, so it can break the messages into &lt;strong&gt;meaningful&lt;/strong&gt; tokens.&lt;/p&gt;
-
-&lt;p&gt;There are two reasons for the emphasis on &lt;strong&gt;meaningful&lt;/strong&gt;. First, due to the unstructured nature of most log messages, a scanner cannot depend on whitespaces to separate meaningful parts of the message. As an example, most timestamps in log messages have whitespaces, such as &lt;code&gt;01/02 03:04:05PM &#39;06 -0700&lt;/code&gt;. This semantically should be a single token. But if a scanner tokenizes based on whitespace, then it will be broken into 4 differnt parts, including &lt;code&gt;01/02&lt;/code&gt;, &lt;code&gt;03:04:05PM&lt;/code&gt;, &lt;code&gt;&#39;06&lt;/code&gt; and &lt;code&gt;-0700&lt;/code&gt;. This would obviously be wrong.&lt;/p&gt;
-
-&lt;p&gt;A scanner also cannot depend on punctuations to tokenize the log message. In the above timestamp example, if you count &lt;code&gt;/&lt;/code&gt; and &lt;code&gt;:&lt;/code&gt; as punctuations, then you would end up with 4 different tokens, including &lt;code&gt;01&lt;/code&gt;, &lt;code&gt;02 03&lt;/code&gt;, &lt;code&gt;04&lt;/code&gt;, and &lt;code&gt;05PM &#39;06 -0700&lt;/code&gt;.&lt;/p&gt;
-
-&lt;p&gt;Same if you were to look at an IPv4 address such as &amp;ldquo;127.0.0.1&amp;rdquo;, or IPv6 address such as &amp;ldquo;f0f0:f::1&amp;rdquo;, or MAC address such as &amp;ldquo;00:04:c1:8b:d8:82&amp;rdquo;, or a hex signature such as &amp;ldquo;de:ad:be:ef:74:a6:bb:45:45:52:71:de:b2:12:34:56&amp;rdquo;. All these should be their own tokens. But if a scanner depends on only whitespace or punctuations to tokenize a message, these valid tokens would all be broken apart.&lt;/p&gt;
-
-&lt;p&gt;Second, understanding the types of tokens will help the &lt;em&gt;parser&lt;/em&gt; distinguish between different log messages. If two messages are almost identical but one has a hostname and the other has an IP address, the &lt;em&gt;scanner&lt;/em&gt; can let the &lt;em&gt;parser&lt;/em&gt; know, and the &lt;em&gt;parser&lt;/em&gt; would the choose the correct pattern for the message.&lt;/p&gt;
-
-&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; scanners currently automatically recognizes &lt;a href=&#34;http://sequencer.io/manual/tokens&#34;&gt;9 different token types&lt;/a&gt; and &lt;a href=&#34;http://sequencer.io/manual/timeformats&#34;&gt;42 different time stamps&lt;/a&gt; .&lt;/p&gt;
-
-&lt;h3 id=&#34;scanners:adc8a12436d57d609395e4ca6900ba2b&#34;&gt;Scanners&lt;/h3&gt;
-
-&lt;p&gt;&lt;code&gt;sequence&lt;/code&gt; implemented two scanners. First is a &lt;strong&gt;general scanner&lt;/strong&gt; which is a sequential lexical analyzer that breaks unstructured log messages into sequences of tokens. This scanner is mianly used for most system and network log messages that are free-form unstructured text.&lt;/p&gt;
-
-&lt;p&gt;As an example, the following log message can be tokenized into the sequence of tokens below. As you can see, one cannot depend on white spaces to tokenize, as the timestamp would be broken into 3 parts; nor can one use punctuations like &amp;ldquo;;&amp;rdquo; or &amp;ldquo;:&amp;ldquo;, as they would break the log mesage into useless parts.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;jan 14 10:15:56 testserver sudo:    gonner : tty=pts/3 ; pwd=/home/gonner ; user=root ; command=/bin/su - ustream
-
-  #   0: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;ts&amp;quot;, Value=&amp;quot;jan 14 10:15:56&amp;quot; }
-  #   1: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;testserver&amp;quot; }
-  #   2: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;sudo&amp;quot; }
-  #   3: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;:&amp;quot; }
-  #   4: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;gonner&amp;quot; }
-  #   5: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;:&amp;quot; }
-  #   6: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;tty&amp;quot; }
-  #   7: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #   8: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;string&amp;quot;, Value=&amp;quot;pts/3&amp;quot; }
-  #   9: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;;&amp;quot; }
-  #  10: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;pwd&amp;quot; }
-  #  11: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #  12: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;string&amp;quot;, Value=&amp;quot;/home/gonner&amp;quot; }
-  #  13: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;;&amp;quot; }
-  #  14: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;user&amp;quot; }
-  #  15: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #  16: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;string&amp;quot;, Value=&amp;quot;root&amp;quot; }
-  #  17: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;;&amp;quot; }
-  #  18: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;command&amp;quot; }
-  #  19: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #  20: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;string&amp;quot;, Value=&amp;quot;/bin/su&amp;quot; }
-  #  21: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;-&amp;quot; }
-  #  22: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;ustream&amp;quot; }
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Second is a &lt;strong&gt;JSON scanner&lt;/strong&gt;, implemented by &lt;code&gt;ScanJson()&lt;/code&gt;, that scans JSON messages and convert them into a &lt;em&gt;sequence&lt;/em&gt; that can be parsed by the &lt;em&gt;parser&lt;/em&gt;.&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;ScanJson()&lt;/code&gt; will flatten a json string into key=value pairs, and it performs the following transformation:&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;all {, }, [, ], &amp;ldquo;, characters are removed&lt;/li&gt;
-&lt;li&gt;colon between key and value are changed to &amp;ldquo;=&amp;rdquo;&lt;/li&gt;
-&lt;li&gt;nested objects have their keys concatenated with &amp;ldquo;.&amp;rdquo;, so a json string like &lt;code&gt;&amp;quot;userIdentity&amp;quot;: {&amp;quot;type&amp;quot;: &amp;quot;IAMUser&amp;quot;}&lt;/code&gt; will be returned as &lt;code&gt;userIdentity.type=IAMUser&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;arrays are flattened by appending an index number to the end of the key, starting with 0, so a json string like &lt;code&gt;{&amp;quot;value&amp;quot;:[{&amp;quot;open&amp;quot;:&amp;quot;2014-08-16T13:00:00.000+0000&amp;quot;}]}&lt;/code&gt; will be returned as &lt;code&gt;value.0.open=2014-08-16T13:00:00.000+0000&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;skips any key that has an empty value, so json strings like &lt;code&gt;&amp;quot;reference&amp;quot;:&amp;quot;&amp;quot;&lt;/code&gt; or &lt;code&gt;&amp;quot;filterSet&amp;quot;: {}&lt;/code&gt; will not show up in the Sequence&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;For example:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;{&amp;quot;EventTime&amp;quot;:&amp;quot;2014-08-16T12:45:03-0400&amp;quot;,&amp;quot;URI&amp;quot;:&amp;quot;myuri&amp;quot;,&amp;quot;uri_payload&amp;quot;:{&amp;quot;value&amp;quot;:[{&amp;quot;open&amp;quot;:&amp;quot;2014-08-16T13:00:00.000+0000&amp;quot;,&amp;quot;close&amp;quot;:&amp;quot;2014-08-16T23:00:00.000+0000&amp;quot;,&amp;quot;isOpen&amp;quot;:true,&amp;quot;date&amp;quot;:&amp;quot;2014-08-16&amp;quot;}],&amp;quot;Count&amp;quot;:1}}
-
-  #   0: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;EventTime&amp;quot; }
-  #   1: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #   2: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;time&amp;quot;, Value=&amp;quot;2014-08-16T12:45:03-0400&amp;quot; }
-  #   3: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;URI&amp;quot; }
-  #   4: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #   5: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;myuri&amp;quot; }
-  #   6: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;uri_payload.value.0.open&amp;quot; }
-  #   7: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #   8: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;time&amp;quot;, Value=&amp;quot;2014-08-16T13:00:00.000+0000&amp;quot; }
-  #   9: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;uri_payload.value.0.close&amp;quot; }
-  #  10: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #  11: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;time&amp;quot;, Value=&amp;quot;2014-08-16T23:00:00.000+0000&amp;quot; }
-  #  12: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;uri_payload.value.0.isOpen&amp;quot; }
-  #  13: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #  14: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;true&amp;quot; }
-  #  15: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;uri_payload.value.0.date&amp;quot; }
-  #  16: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #  17: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;time&amp;quot;, Value=&amp;quot;2014-08-16&amp;quot; }
-  #  18: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;uri_payload.Count&amp;quot; }
-  #  19: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;literal&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #  20: { Field=&amp;quot;funknown&amp;quot;, Type=&amp;quot;integer&amp;quot;, Value=&amp;quot;1&amp;quot; }
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h3 id=&#34;design:adc8a12436d57d609395e4ca6900ba2b&#34;&gt;Design&lt;/h3&gt;
-
-&lt;p&gt;Tokenizers or scanners are usually implemented using finite-state machines. Each FSM (or FSA, finite state automata) understands a specific sequences of characters that make up a type of token.&lt;/p&gt;
-
-&lt;p&gt;In the &lt;code&gt;sequence&lt;/code&gt; scanner, there are three FSMs: Time, HexString and General.&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;The Time FSM understands &lt;a href=&#34;http://sequencer.io/manual/timeformats&#34;&gt;42 different time stamps&lt;/a&gt;. This list of time formats are commonly seen in log messages. It is also fairly easy to add to this list if needed.&lt;/li&gt;
-&lt;li&gt;The HexString FSM is designed to understand IPv6 addresses (dead:beef:1234:5678:223:32ff:feb1:2e50 or f0f0:f::1), MAC addresses (00:04:c1:8b:d8:82), fingerprints or signatures (de:ad:be:ef:74:a6:bb:45:45:52:71:de:b2:12:34:56).&lt;/li&gt;
-&lt;li&gt;The General FSM that recognizes URLs, IPv4 addresses, and any literal or strings.&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;Each character in the log message are run through all three FSMs, and the following logics are applied:&lt;/p&gt;
-
-&lt;ol&gt;
-&lt;li&gt;If a time format is matched, that&amp;rsquo;s what it will be returned.&lt;/li&gt;
-&lt;li&gt;Next if a hex string is matched, it is also returned.
-
-&lt;ul&gt;
-&lt;li&gt;We mark anything with 5 colon characters and no successive colons like &amp;ldquo;::&amp;rdquo; to be a MAC address.&lt;/li&gt;
-&lt;li&gt;Anything that has 7 colons and no successive colons are marked as IPv6 address.&lt;/li&gt;
-&lt;li&gt;Anything that has less than 7 colons but has only 1 set of successive colons like &amp;ldquo;::&amp;rdquo; are marked as IPv6 address.&lt;/li&gt;
-&lt;li&gt;Everything else is just a literal.&lt;/li&gt;
-&lt;/ul&gt;&lt;/li&gt;
-&lt;li&gt;Finally if neither of the above matched, we return what the general FSM has matched.
-
-&lt;ul&gt;
-&lt;li&gt;The general FSM recognizes these quote characters: &amp;ldquo;, &amp;lsquo; and &amp;lt;. If these characters are encountered, then it will consider anything between the quotes to be a single token.&lt;/li&gt;
-&lt;li&gt;Anything that starts with http:// or https:// are considered URLs.&lt;/li&gt;
-&lt;li&gt;Anything that matches 4 integer octets are considered IP addresses.&lt;/li&gt;
-&lt;li&gt;Anything that matches two integers with a dot in between are considered floats.&lt;/li&gt;
-&lt;li&gt;Anything that matches just numbers are considered integers.&lt;/li&gt;
-&lt;li&gt;Everything else are literals.&lt;/li&gt;
-&lt;/ul&gt;&lt;/li&gt;
-&lt;/ol&gt;
-
-&lt;p&gt;To achieve the performance we want, &lt;code&gt;sequence&lt;/code&gt; took great pain to go through the log message once and only once. This is probably a pretty obvious technique. The more times you loop through loop through a string, the lower the performance.&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;sequence&lt;/code&gt; also took great pain to ensure that there&amp;rsquo;s no need to look forward or look backward in the log message to determine the current token type. If you used regular expressions to parse logs, you will likely go through parts of the log message multiple times due to back tracking or look forward, etc.&lt;/p&gt;
-
-&lt;p&gt;In reality though, while the scanners only looping through the log string once, and only once, it does run each character through three different FSMs. However, it is still much less expensive than looping through three times, each time checking a single FSM.&lt;/p&gt;
-
-&lt;p&gt;You can &lt;a href=&#34;http://zhen.org/blog/sequence-optimizing-go-for-high-performance-log-scanner/&#34;&gt;read more details&lt;/a&gt; on how the scanners were able to achieve the performance.&lt;/p&gt;
-
-&lt;h3 id=&#34;performance:adc8a12436d57d609395e4ca6900ba2b&#34;&gt;Performance&lt;/h3&gt;
-
-&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;scanner&lt;/em&gt; is able to tokenize almost 200,000 messages per second for messages averaging 136 bytes. The following performance benchmarks are run on a single 4-core (2.8Ghz i7) MacBook Pro, although the tests were only using 1 or 2 cores. The first file is a bunch of sshd logs, averaging 98 bytes per message. The second is a Cisco ASA log file, averaging 180 bytes per message. Last is a mix of ASA, sshd and sudo logs, averaging 136 bytes per message.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;  $ ./sequence bench scan -i ../../data/sshd.all
-  Scanned 212897 messages in 0.78 secs, ~ 272869.35 msgs/sec
-
-  $ ./sequence bench scan -i ../../data/allasa.log
-  Scanned 234815 messages in 1.43 secs, ~ 163827.61 msgs/sec
-
-  $ ./sequence bench scan -i ../../data/allasassh.log
-  Scanned 447745 messages in 2.27 secs, ~ 197258.42 msgs/sec
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Performance can be improved by adding more cores:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;  $ GOMAXPROCS=2 ./sequence bench scan -i ../../data/sshd.all -w 2
-  Scanned 212897 messages in 0.43 secs, ~ 496961.52 msgs/sec
-
-  $ GOMAXPROCS=2 ./sequenceo bench scan -i ../../data/allasa.log -w 2
-  Scanned 234815 messages in 0.80 secs, ~ 292015.98 msgs/sec
-
-  $ GOMAXPROCS=2 ./sequence bench scan -i ../../data/allasassh.log -w 2
-  Scanned 447745 messages in 1.20 secs, ~ 373170.45 msgs/sec
-&lt;/code&gt;&lt;/pre&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>Sequence: A New Approach</title>
-      <link>http://sequencer.io/manual/sequence/</link>
-      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
-      
-      <guid>http://sequencer.io/manual/sequence/</guid>
-      <description>
-
-&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/banner2.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;A new approach taken by &lt;code&gt;sequence&lt;/code&gt; breaks the art of extracting meaningful information from log messages into three parts: scanning, analyzing and parsing.&lt;/p&gt;
-
-&lt;p&gt;In &lt;code&gt;sequence&lt;/code&gt;, the first critical function to understanding a log message is to convert it into a sequence of valid tokens, i.e., &lt;strong&gt;meaningful&lt;/strong&gt; character strings. This function is called a &lt;em&gt;scanner&lt;/em&gt;, but it can be called a &lt;em&gt;lexical analyzer&lt;/em&gt;, &lt;em&gt;lexer&lt;/em&gt;, or &lt;em&gt;tokenizer&lt;/em&gt;. The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;scanner&lt;/em&gt; goes through log message sequentially while tokentizing each part of the message, without the use of regular expressions.&lt;/p&gt;
-
-&lt;p&gt;The &lt;em&gt;analyzer&lt;/em&gt; takes all the &lt;em&gt;sequences&lt;/em&gt; returned by the &lt;em&gt;scanner&lt;/em&gt; and attempt to automatically write the parsing rules. While it&amp;rsquo;s impossible to automatically generate 100% of the rules, the goal is to get to 75% accuracy by leveraging hints provided by analysts.&lt;/p&gt;
-
-&lt;p&gt;Finally, the &lt;em&gt;parser&lt;/em&gt; will take the rules generated by the analyzer (and updated/corrected by some human) as well as the &lt;em&gt;sequences&lt;/em&gt; returned by the &lt;em&gt;scanner&lt;/em&gt; for log messages, and attempt to identify the matching rule. Based on the matching rule, the &lt;em&gt;parser&lt;/em&gt; will tag all the recognized tokens with a semantic tag, as defined by the user.&lt;/p&gt;
-
-&lt;p&gt;The approach taken by the &lt;em&gt;parser&lt;/em&gt; is a tree-based parsing approach, which is also used by &lt;a href=&#34;http://www.liblognorm.com/&#34;&gt;liblognorm&lt;/a&gt;. This approach is much higher performance, as it only requires going through the log message only once. And because most, if not all, parsing rules are pre-built into a prefix tree, the engine just needs to walk through the tree once and be able to determine if there&amp;rsquo;s a match.&lt;/p&gt;
-
-&lt;p&gt;Keep in mind that &lt;code&gt;sequence&lt;/code&gt; is NOT a replacement for Splunk or ElasticSearch, or any of the log analytics solutions. It is a library and a tool that can help parse messages much faster. The result of &lt;code&gt;sequence&lt;/code&gt; can be fed into these log analytics tools for further analysis.&lt;/p&gt;
-
-&lt;h3 id=&#34;other-concepts:196ac21fc7c80b3643c5060d84767136&#34;&gt;Other Concepts&lt;/h3&gt;
-
-&lt;p&gt;The &lt;em&gt;scanner&lt;/em&gt; returns a &lt;em&gt;sequence&lt;/em&gt;, or a list of tokens, which can then be consumed by the &lt;em&gt;analyzer&lt;/em&gt; or &lt;em&gt;parser&lt;/em&gt;.&lt;/p&gt;
-
-&lt;p&gt;A &lt;em&gt;Token&lt;/em&gt; is a piece of information extracted from the original log message. It is a struct that contains fields for &lt;em&gt;TokenType&lt;/em&gt;, &lt;em&gt;FieldType&lt;/em&gt;, &lt;em&gt;Value&lt;/em&gt;.&lt;/p&gt;
-
-&lt;p&gt;A &lt;em&gt;TokenType&lt;/em&gt; indicates whether the token is a literal string (one that does not change), a variable string (one that could have different values), an IPv4 or IPv6 address, a MAC address, an integer, a floating point number, or a timestamp.&lt;/p&gt;
-
-&lt;p&gt;A &lt;em&gt;FieldType&lt;/em&gt; indicates the semantic meaning of the token. For example, a token could be a source IP address (%srcipv4%), or a user (%srcuser% or %dstuser%), an action (%action%) or a status (%status%).&lt;/p&gt;
-
-&lt;h3 id=&#34;performance:196ac21fc7c80b3643c5060d84767136&#34;&gt;Performance&lt;/h3&gt;
-
-&lt;p&gt;Most of the tools out there perform at several thousands messages per second (MPS) on a single machine using regex parsers. For &lt;code&gt;sequence&lt;/code&gt;, we are able to achieve over 100,000 MPS with average message size of 140 bytes, using a single CPU core. &lt;code&gt;sequence&lt;/code&gt; can also scale almost linearly (with a slight penalty due to communications overhead) as more cores are added.&lt;/p&gt;
-
-&lt;p&gt;The following performance benchmarks are run on a single 4-core (2.8Ghz i7) MacBook Pro. The first file is a
-bunch of sshd logs, averaging 98 bytes per message. The second is a Cisco ASA log file, averaging 180 bytes per message. Last is a mix of ASA, sshd and sudo logs, averaging 136 bytes per message.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;  $ ./sequence bench parse -p ../../patterns/sshd.txt -i ../../data/sshd.all
-  Parsed 212897 messages in 1.69 secs, ~ 126319.27 msgs/sec
-
-  $ ./sequence bench parse -p ../../patterns/asa.txt -i ../../data/allasa.log
-  Parsed 234815 messages in 2.89 secs, ~ 81323.41 msgs/sec
-
-  $ ./sequence bench parse -d ../patterns -i ../data/asasshsudo.log
-  Parsed 447745 messages in 4.47 secs, ~ 100159.65 msgs/sec
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Performance can be improved by adding more cores:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;  GOMAXPROCS=2 ./sequence bench parse -p ../../patterns/sshd.txt -i ../../data/sshd.all -w 2
-  Parsed 212897 messages in 1.00 secs, ~ 212711.83 msgs/sec
-
-  $ GOMAXPROCS=2 ./sequence bench parse -p ../../patterns/asa.txt -i ../../data/allasa.log -w 2
-  Parsed 234815 messages in 1.56 secs, ~ 150769.68 msgs/sec
-
-  $ GOMAXPROCS=2 ./sequence bench parse -d ../patterns -i ../data/asasshsudo.log -w 2
-  Parsed 447745 messages in 2.52 secs, ~ 177875.94 msgs/sec
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;One may ask, who can POSSIBLY use such performance? Many organizations that I know are generating between 50-100M messages per second (MPS), that&amp;rsquo;s only 1,200 MPS. However, some larger organizations I know are generating 60GB of Bluecoat logs per day, &lt;strong&gt;8 years ago&lt;/strong&gt;!! That&amp;rsquo;s a good 3,000 MPS assuming an average of 250 bytes per message. Even if log rate grows at 15%, that&amp;rsquo;s over 10,000 MPS today. This already exceeds the capability of some parsers.&lt;/p&gt;
-
-&lt;p&gt;To run through another example, &lt;a href=&#34;http://www.covert.io/research-papers/security/Beehive%20-%20Large-Scale%20Log%20Analysis%20for%20Detecting%20Suspicious%20Activity%20in%20Enterprise%20Networks.pdf&#34;&gt;at EMC, 1.4 billion log messages are generated daily on average, at a rate of one terabyte a day&lt;/a&gt;. That&amp;rsquo;s 16,200 messages per second, and about 714 bytes per message. These EMC numbers are from 2013, so they have most likely increased by now.&lt;/p&gt;
-
-&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; parser, with a single CPU core, can process about 270,000 MPS for messages averaging 98 bytes. Assuming the performance is linear compare to the message size (which is pretty close to the truth), we can parse 37,000 MPS for messages averaging 714 bytes. That&amp;rsquo;s twice of what&amp;rsquo;s needed for EMC, using a SINGLE CORE!&lt;/p&gt;
-
-&lt;p&gt;Obviously one can throw more hardware at solving the scale problem with the existing tools, but then again, why do that if you don&amp;rsquo;t need to. Just because you have the hardware doesn&amp;rsquo;t mean you should waste the money! Besides, there are much more interesting analytics problems your hardware can be used for than just tokenizing a message.&lt;/p&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>Time Formats</title>
-      <link>http://sequencer.io/manual/timeformats/</link>
-      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
-      
-      <guid>http://sequencer.io/manual/timeformats/</guid>
-      <description>&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic06.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;One of the most difficult task in log parsing is recognizing and understanding the different time formats. Syslog RFCs have defined a couple formats that the syslog servers abide to. However, there are many log messages out there that don&amp;rsquo;t use the two syslog time formats.&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;sequence&lt;/code&gt; currently automatically recognizes 42 different time formats as listed below. More will be added, so the best (authoritative) place to check is &lt;a href=&#34;https://github.com/trustpath/sequence&#34;&gt;sequence.toml&lt;/a&gt; in the github repo.&lt;/p&gt;
-
-&lt;p&gt;When writing rules, analysts don&amp;rsquo;t need to know what time formats are used in the log messages. They just need to know that there&amp;rsquo;s a time at a certain location of the message. &lt;code&gt;sequence&lt;/code&gt; will automatically detecting the time format, and normalizing the time formats into a single one.&lt;/p&gt;
-
-&lt;p&gt;In the table below, the reference time used in the layouts is the specific time:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;Mon Jan 2 15:04:05 MST 2006
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;which is Unix time 1136239445. Since MST is GMT-0700, the reference time can be thought of as&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;01/02 03:04:05PM &#39;06 -0700
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The best way to remember this is that the numbers are contiguous: 01, 02, 03, 04, 05, 06, 07 in the above format. Make sure you write the time format correctly as it will be used to normalize the different time stamps.&lt;/p&gt;
-
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;#&lt;/th&gt;
-&lt;th&gt;Time Formats&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;1.&lt;/td&gt;
-&lt;td&gt;Mon Jan _2 15:04:05 2006&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;2.&lt;/td&gt;
-&lt;td&gt;Mon Jan _2 15:04:05 MST 2006&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;3.&lt;/td&gt;
-&lt;td&gt;Mon Jan 02 15:04:05 -0700 2006&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;4.&lt;/td&gt;
-&lt;td&gt;02 Jan 06 15:04 MST&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;5.&lt;/td&gt;
-&lt;td&gt;02 Jan 06 15:04 -0700&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;6.&lt;/td&gt;
-&lt;td&gt;Monday, 02-Jan-06 15:04:05 MST&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;7.&lt;/td&gt;
-&lt;td&gt;Mon, 02 Jan 2006 15:04:05 MST&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;8.&lt;/td&gt;
-&lt;td&gt;Mon, 02 Jan 2006 15:04:05 -0700&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;9.&lt;/td&gt;
-&lt;td&gt;2006-01-02T15:04:05Z07:00&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;10.&lt;/td&gt;
-&lt;td&gt;2006-01-02T15:04:05.999999999Z07:00&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;11.&lt;/td&gt;
-&lt;td&gt;Jan _2 15:04:05&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;12.&lt;/td&gt;
-&lt;td&gt;Jan _2 15:04:05.000&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;13.&lt;/td&gt;
-&lt;td&gt;Jan _2 15:04:05.000000&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;14.&lt;/td&gt;
-&lt;td&gt;Jan _2 15:04:05.000000000&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;15.&lt;/td&gt;
-&lt;td&gt;_2/Jan/2006:15:04:05 -0700&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;16.&lt;/td&gt;
-&lt;td&gt;Jan 2, 2006 3:04:05 PM&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;17.&lt;/td&gt;
-&lt;td&gt;Jan 2 2006 15:04:05&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;18.&lt;/td&gt;
-&lt;td&gt;Jan 2 15:04:05 2006&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;19.&lt;/td&gt;
-&lt;td&gt;Jan 2 15:04:05 -0700&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;20.&lt;/td&gt;
-&lt;td&gt;2006-01-02 15:04:05,000 -0700&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;21.&lt;/td&gt;
-&lt;td&gt;2006-01-02 15:04:05 -0700&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;22.&lt;/td&gt;
-&lt;td&gt;2006-01-02 15:04:05-0700&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;23.&lt;/td&gt;
-&lt;td&gt;2006-01-02 15:04:05,000&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;24.&lt;/td&gt;
-&lt;td&gt;2006-01-02 15:04:05&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;25.&lt;/td&gt;
-&lt;td&gt;2006/01/02 15:04:05&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;26.&lt;/td&gt;
-&lt;td&gt;06-01-02 15:04:05,000 -0700&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;27.&lt;/td&gt;
-&lt;td&gt;06-01-02 15:04:05,000&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;28.&lt;/td&gt;
-&lt;td&gt;06-01-02 15:04:05&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;29.&lt;/td&gt;
-&lt;td&gt;06/01/02 15:04:05&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;30.&lt;/td&gt;
-&lt;td&gt;15:04:05,000&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;31.&lt;/td&gt;
-&lt;td&gt;1/2/2006 3:04:05 PM&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;32.&lt;/td&gt;
-&lt;td&gt;1/2/06 3:04:05.000 PM&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;33.&lt;/td&gt;
-&lt;td&gt;1/2/2006 15:04&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;34.&lt;/td&gt;
-&lt;td&gt;02Jan2006 03:04:05&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;35.&lt;/td&gt;
-&lt;td&gt;Jan _2, 2006 3:04:05 PM&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;36.&lt;/td&gt;
-&lt;td&gt;2006-01-02T15:04:05Z&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;37.&lt;/td&gt;
-&lt;td&gt;2006-01-02T15:04:05-0700&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;38.&lt;/td&gt;
-&lt;td&gt;2006-01-02T15:04:05.999-0700&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;39.&lt;/td&gt;
-&lt;td&gt;2006-01-02&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;40.&lt;/td&gt;
-&lt;td&gt;15:04:05&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;41.&lt;/td&gt;
-&lt;td&gt;2006-01-02T15:04:05.999999Z&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;42.&lt;/td&gt;
-&lt;td&gt;02/Jan/2006:15:04:05.999&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>Optimizing Go For the High Performance Log Scanner</title>
-      <link>http://sequencer.io/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</link>
-      <pubDate>Fri, 13 Feb 2015 01:03:08 -0800</pubDate>
-      
-      <guid>http://sequencer.io/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</guid>
-      <description>
-
-&lt;h3 id=&#34;tl-dr:7cafd8125150d58e303b9851cd9816dd&#34;&gt;tl;dr&lt;/h3&gt;
-
-&lt;ul&gt;
-&lt;li&gt;The &lt;code&gt;sequence&lt;/code&gt; scanner is designed to tokenize free-form log messages.
-
-&lt;ul&gt;
-&lt;li&gt;It can scan between 200K to 500K log messages per second depending on message size and core count.&lt;/li&gt;
-&lt;li&gt;It recognizes time stamps, hex strings, IP (v4, v6) addresses, URLs, MAC addresses, integers and floating point numbers.&lt;/li&gt;
-&lt;li&gt;The design is based mostly on finite-state machines.&lt;/li&gt;
-&lt;/ul&gt;&lt;/li&gt;
-&lt;li&gt;The performance was achieved by the following techniques:
-
-&lt;ol&gt;
-&lt;li&gt;Go Through the String Once and Only Once&lt;/li&gt;
-&lt;li&gt;Avoid Indexing into the String&lt;/li&gt;
-&lt;li&gt;Reduce Heap Allocation&lt;/li&gt;
-&lt;li&gt;Reduce Data Copying&lt;/li&gt;
-&lt;li&gt;Mind the Data Struture&lt;/li&gt;
-&lt;li&gt;Avoid Interfaces If Possible&lt;/li&gt;
-&lt;li&gt;Find Ways to Short Circuit Checks&lt;/li&gt;
-&lt;/ol&gt;&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;h3 id=&#34;background:7cafd8125150d58e303b9851cd9816dd&#34;&gt;Background&lt;/h3&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;In computer science, lexical analysis is the process of converting a sequence of characters into a sequence of tokens, i.e. meaningful character strings. A program or function that performs lexical analysis is called a lexical analyzer, lexer, tokenizer, or scanner. - &lt;a href=&#34;http://en.wikipedia.org/wiki/Lexical_analysis&#34;&gt;Wikipedia&lt;/a&gt;&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;One of the most critical functions in the &lt;code&gt;sequence&lt;/code&gt; parser is the message tokenization. At a very high level, message tokenization means taking a single log message and breaking it into a list of tokens.&lt;/p&gt;
-
-&lt;h4 id=&#34;functional-requirements:7cafd8125150d58e303b9851cd9816dd&#34;&gt;Functional Requirements&lt;/h4&gt;
-
-&lt;p&gt;The challenge is knowing where the token break points are. Most log messages are free-form text, which means there&amp;rsquo;s no common structure to them.&lt;/p&gt;
-
-&lt;p&gt;As an example, the following log message can be tokenized into the sequence of tokens below. As you can see, one cannot depend on white spaces to tokenize, as the timestamp would be broken into 3 parts; nor can one use punctuations like &amp;ldquo;;&amp;rdquo; or &amp;ldquo;:&amp;ldquo;, as they would break the log mesage into useless parts.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;jan 14 10:15:56 testserver sudo:    gonner : tty=pts/3 ; pwd=/home/gonner ; user=root ; command=/bin/su - ustream
-
-  #   0: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%ts%&amp;quot;, Value=&amp;quot;jan 14 10:15:56&amp;quot; }
-  #   1: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;testserver&amp;quot; }
-  #   2: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;sudo&amp;quot; }
-  #   3: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
-  #   4: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;gonner&amp;quot; }
-  #   5: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;:&amp;quot; }
-  #   6: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;tty&amp;quot; }
-  #   7: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #   8: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;pts/3&amp;quot; }
-  #   9: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;;&amp;quot; }
-  #  10: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;pwd&amp;quot; }
-  #  11: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #  12: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;/home/gonner&amp;quot; }
-  #  13: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;;&amp;quot; }
-  #  14: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;user&amp;quot; }
-  #  15: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #  16: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;root&amp;quot; }
-  #  17: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;;&amp;quot; }
-  #  18: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;command&amp;quot; }
-  #  19: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;=&amp;quot; }
-  #  20: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%string%&amp;quot;, Value=&amp;quot;/bin/su&amp;quot; }
-  #  21: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;-&amp;quot; }
-  #  22: { Field=&amp;quot;%funknown%&amp;quot;, Type=&amp;quot;%literal%&amp;quot;, Value=&amp;quot;ustream&amp;quot; }
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;So a log message &lt;em&gt;scanner&lt;/em&gt; or &lt;em&gt;tokenizer&lt;/em&gt; (we will use these terms interchangeably) must understand common components such as timestamp, URL, hex strings, IP addresses (v4 or v6), and mac addresses, so it can break the messages into &lt;em&gt;meaningful components&lt;/em&gt;.&lt;/p&gt;
-
-&lt;h4 id=&#34;performance-requirements:7cafd8125150d58e303b9851cd9816dd&#34;&gt;Performance Requirements&lt;/h4&gt;
-
-&lt;p&gt;From a performance requirements perspective, I really didn&amp;rsquo;t start out with any expectations. However, after achieving 100-200K MPS for parsing (not just tokenizing), I have a strong desire to keep the performance at that level. So the more I can optimize the scanner to tokenize faster, the more head room I have for parsing.&lt;/p&gt;
-
-&lt;p&gt;One may ask, who can POSSIBLY use such performance? Many organizations that I know are generating between 50-100M messages per second (MPS), that&amp;rsquo;s only 1,200 MPS. Some larger organizations I know are generating 60GB of Bluecoat logs per day, &lt;strong&gt;8 years ago&lt;/strong&gt;!! That&amp;rsquo;s a good 3,000 MPS assuming an average of 250 bytes per message. Even if log rate grows at 15%, that&amp;rsquo;s still only 10K MPS today.&lt;/p&gt;
-
-&lt;p&gt;To run through an example, &lt;a href=&#34;http://www.covert.io/research-papers/security/Beehive%20-%20Large-Scale%20Log%20Analysis%20for%20Detecting%20Suspicious%20Activity%20in%20Enterprise%20Networks.pdf&#34;&gt;at EMC, 1.4 billion log messages are generated daily on average, at a rate of one terabyte a day&lt;/a&gt;. That&amp;rsquo;s 16,200 messages per second, and about 714 bytes per message. (Btw, what system can possibly generate messages that are 714 bytes long? That&amp;rsquo;s crazy and completely inefficient!) These EMC numbers are from 2013, so they have likely increased by now.&lt;/p&gt;
-
-&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; parser, with a single CPU core, can process about 270,000 MPS for messages averaging 98 bytes. Assuming the performance is linear compare to the message size (which is pretty close to the truth), we can process 37,000 MPS for messages averaging 714 bytes. That&amp;rsquo;s just enough to parse the 16,2000 MPS, with a little head room to do other types of analysis or future growth.&lt;/p&gt;
-
-&lt;p&gt;Obviously one can throw more hardware at solving the scale problem, but then again, why do that if you don&amp;rsquo;t need to. Just because you have the hardware doesn&amp;rsquo;t mean you should waste the money! Besides, there are much more interesting analytics problems your hardware can be used for than just tokenizing a message.&lt;/p&gt;
-
-&lt;p&gt;In any case, I want to squeeze every oz of performance out of the scanner so I can have more time in the back to parse and analyze. So let&amp;rsquo;s set a goal of keeping at least 200,000 MPS for 100 bytes per message (BPM).&lt;/p&gt;
-
-&lt;p&gt;Yes, go ahead and tell me I shouldn&amp;rsquo;t worry about micro-optimization, because this post is all about that. :)&lt;/p&gt;
-
-&lt;h3 id=&#34;sequence-scanner:7cafd8125150d58e303b9851cd9816dd&#34;&gt;Sequence Scanner&lt;/h3&gt;
-
-&lt;p&gt;In the &lt;code&gt;sequence&lt;/code&gt; package, we implemented a general log message scanner, called &lt;a href=&#34;https://github.com/strace/sequence/blob/master/scanner.go&#34;&gt;GeneralScanner&lt;/a&gt;. GeneralScanner is a sequential lexical analyzer that breaks a log message into a sequence of tokens. It is sequential because it goes through log message sequentially tokentizing each part of the message, without the use of regular expressions. The scanner currently recognizes time stamps, hex strings, IP (v4, v6) addresses, URLs, MAC addresses, integers and floating point numbers.&lt;/p&gt;
-
-&lt;p&gt;This implementation was able to achieve both the functional and performance requirements. The following performance benchmarks are run on a single 4-core (2.8Ghz i7) MacBook Pro, although the tests were only using 1 or 2 cores. The first file is a bunch of sshd logs, averaging 98 bytes per message. The second is a Cisco ASA log file, averaging 180 bytes per message. Last is a mix of ASA, sshd and sudo logs, averaging 136 bytes per message.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;  $ ./sequence bench scan -i ../../data/sshd.all
-  Scanned 212897 messages in 0.78 secs, ~ 272869.35 msgs/sec
-
-  $ ./sequence bench scan -i ../../data/allasa.log
-  Scanned 234815 messages in 1.43 secs, ~ 163827.61 msgs/sec
-
-  $ ./sequence bench scan -i ../../data/allasassh.log
-  Scanned 447745 messages in 2.27 secs, ~ 197258.42 msgs/sec
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Performance can be improved by adding more cores:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;  $ GOMAXPROCS=2 ./sequence bench scan -i ../../data/sshd.all -w 2
-  Scanned 212897 messages in 0.43 secs, ~ 496961.52 msgs/sec
-
-  $ GOMAXPROCS=2 ./sequenceo bench scan -i ../../data/allasa.log -w 2
-  Scanned 234815 messages in 0.80 secs, ~ 292015.98 msgs/sec
-
-  $ GOMAXPROCS=2 ./sequence bench scan -i ../../data/allasassh.log -w 2
-  Scanned 447745 messages in 1.20 secs, ~ 373170.45 msgs/sec
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h4 id=&#34;concepts:7cafd8125150d58e303b9851cd9816dd&#34;&gt;Concepts&lt;/h4&gt;
-
-&lt;p&gt;To understand the scanner, you have to understand the following concepts that are part of the package.&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;p&gt;A &lt;em&gt;Token&lt;/em&gt; is a piece of information extracted from the original log message. It is a struct that contains fields for &lt;em&gt;TokenType&lt;/em&gt;, &lt;em&gt;FieldType&lt;/em&gt;, and &lt;em&gt;Value&lt;/em&gt;.&lt;/p&gt;&lt;/li&gt;
-
-&lt;li&gt;&lt;p&gt;A &lt;em&gt;TokenType&lt;/em&gt; indicates whether the token is a literal string (one that does not change), a variable string (one that could have different values), an IPv4 or IPv6 address, a MAC address, an integer, a floating point number, or a timestamp.&lt;/p&gt;&lt;/li&gt;
-
-&lt;li&gt;&lt;p&gt;A &lt;em&gt;FieldType&lt;/em&gt; indicates the semantic meaning of the token. For example, a token could be a source IP address (%srcipv4%), or a user (%srcuser% or %dstuser%), an action (%action%) or a status (%status%).&lt;/p&gt;&lt;/li&gt;
-
-&lt;li&gt;&lt;p&gt;A &lt;em&gt;Sequence&lt;/em&gt; is a list of Tokens. It is the key data structure consumed and returned by the &lt;em&gt;Scanner&lt;/em&gt;, &lt;em&gt;Analyzer&lt;/em&gt;, and the &lt;em&gt;Parser&lt;/em&gt;.&lt;/p&gt;&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;Basically, the scanner takes a log message string, tokenizes it and returns a &lt;em&gt;Sequence&lt;/em&gt; with the recognized &lt;em&gt;TokenType&lt;/em&gt; marked. This &lt;em&gt;Sequence&lt;/em&gt; is then fed into the analyzer or parser, and the analyzer or parser in turn returns another &lt;em&gt;Sequence&lt;/em&gt; that has the recognized &lt;em&gt;FieldType&lt;/em&gt; marked.&lt;/p&gt;
-
-&lt;h4 id=&#34;design:7cafd8125150d58e303b9851cd9816dd&#34;&gt;Design&lt;/h4&gt;
-
-&lt;p&gt;Tokenizers or scanners are usually implemented using finite-state machines. Each FSM (or FSA, finite state automata) understands a specific sequences of characters that make up a type of token.&lt;/p&gt;
-
-&lt;p&gt;In the &lt;code&gt;sequence&lt;/code&gt; scanner, there are three FSMs: Time, HexString and General.&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;The Time FSM understands a list of &lt;a href=&#34;https://github.com/strace/sequence/blob/master/time.go&#34;&gt;time formats&lt;/a&gt;. This list of time formats are commonly seen in log messages. It is also fairly easy to add to this list if needed.&lt;/li&gt;
-&lt;li&gt;The HexString FSM is designed to understand IPv6 addresses (dead:beef:1234:5678:223:32ff:feb1:2e50 or f0f0:f::1), MAC addresses (00:04:c1:8b:d8:82), fingerprints or signatures (de:ad:be:ef:74:a6:bb:45:45:52:71:de:b2:12:34:56).&lt;/li&gt;
-&lt;li&gt;The General FSM that recognizes URLs, IPv4 addresses, and any literal or strings.&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;Each character in the log string are run through all three FSMs.&lt;/p&gt;
-
-&lt;ol&gt;
-&lt;li&gt;If a time format is matched, that&amp;rsquo;s what it will be returned.&lt;/li&gt;
-&lt;li&gt;Next if a hex string is matched, it is also returned.
-
-&lt;ul&gt;
-&lt;li&gt;We mark anything with 5 colon characters and no successive colons like &amp;ldquo;::&amp;rdquo; to be a MAC address.&lt;/li&gt;
-&lt;li&gt;Anything that has 7 colons and no successive colons are marked as IPv6 address.&lt;/li&gt;
-&lt;li&gt;Anything that has less than 7 colons but has only 1 set of successive colons like &amp;ldquo;::&amp;rdquo; are marked as IPv6 address.&lt;/li&gt;
-&lt;li&gt;Everything else is just a literal.&lt;/li&gt;
-&lt;/ul&gt;&lt;/li&gt;
-&lt;li&gt;Finally if neither of the above matched, we return what the general FSM has matched.
-
-&lt;ul&gt;
-&lt;li&gt;The general FSM recognizes these quote characters: &amp;ldquo;, &amp;lsquo; and &amp;lt;. If these characters are encountered, then it will consider anything between the quotes to be a single token.&lt;/li&gt;
-&lt;li&gt;Anything that starts with http:// or https:// are considered URLs.&lt;/li&gt;
-&lt;li&gt;Anything that matches 4 integer octets are considered IP addresses.&lt;/li&gt;
-&lt;li&gt;Anything that matches two integers with a dot in between are considered floats.&lt;/li&gt;
-&lt;li&gt;Anything that matches just numbers are considered integers.&lt;/li&gt;
-&lt;li&gt;Everything else are literals.&lt;/li&gt;
-&lt;/ul&gt;&lt;/li&gt;
-&lt;/ol&gt;
-
-&lt;h4 id=&#34;performance:7cafd8125150d58e303b9851cd9816dd&#34;&gt;Performance&lt;/h4&gt;
-
-&lt;p&gt;To achieve the performance requirements, the following rules and optimizations are followed. Some of these are Go specific, and some are general recommendations.&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;1. Go Through the String Once and Only Once&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;This is a hard requirement, otherwise we can&amp;rsquo;t call this project a &lt;em&gt;sequential&lt;/em&gt; parser. :)&lt;/p&gt;
-
-&lt;p&gt;This is probably a pretty obvious technique. The more times you loop through loop through a string, the lower the performance. If you used regular expressions to parse logs, you will likely go through parts of the log message multiple times due to back tracking or look forward, etc.&lt;/p&gt;
-
-&lt;p&gt;I took great pain to ensure that I don&amp;rsquo;t need to look forward or look backward in the log string to determine the current token type, and I think the effort paid off.&lt;/p&gt;
-
-&lt;p&gt;In reality though, while I am only looping through the log string once, and only once, I do run each character through three different FSMs. However, it is still much less expensive than looping through three times, each time checking a single FSM. However, the more FSMs I run the characters through, the slower it gets.&lt;/p&gt;
-
-&lt;p&gt;This was apparently when I &lt;a href=&#34;https://github.com/strace/sequence/commit/a5447814f43b4b9b7e804b14dde38e88fd53e6d0&#34;&gt;updated the scanner to support IPv6 and hex strings&lt;/a&gt;. I tried a couple of different approaches. First, I added an IPv6 specific FSM. So in addition to the original time, mac and general FSMs, there are now 4. That dropped performance by like 15%!!! That&amp;rsquo;s just unacceptable.&lt;/p&gt;
-
-&lt;p&gt;The second approach, which is the one I checked in, combines the MAC, IPv6 and general hex strings into a single FSM. That helped somewhat. I was able to regain about 5% of the performance hit. However, because I can no longer short circuit the MAC address check (by string length and colon positions), I was still experiencing a 8-10% hit.&lt;/p&gt;
-
-&lt;p&gt;What this means is that for most tokens, instead of checking just 2 FSMs because I can short circuit the MAC check pretty early, I have to now check all 3 FSMs.&lt;/p&gt;
-
-&lt;p&gt;So the more FSMs, the more comlicated the FSMs, the more performance hits there will be.&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;2. Avoid Indexing into the String&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;This is really a Go-specific recommentation. Each time you index into a slice or string, Go will perform bounds checking for you, which means there&amp;rsquo;s extra operations it&amp;rsquo;s doing, and also means lower performance. As an example, here are results from two benchmark runs. The first is with bounds checking enabled, which is default Go behavior. The second disables bounds checking.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;  $ go run ./sequence.go bench scan -i ../../data/sshd.all
-  Scanned 212897 messages in 0.79 secs, ~ 268673.91 msgs/sec
-
-  $ go run -gcflags=-B ./sequence.go bench scan -i ../../data/sshd.all
-  Scanned 212897 messages in 0.77 secs, ~ 277479.58 msgs/sec
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The performance difference is approximately 3.5%! However, while it&amp;rsquo;s fun to see the difference, I would never recommend disable bounds checking in production. So the next best thing is to remove as many operations that index into a string or slice as possible. Specifically:&lt;/p&gt;
-
-&lt;ol&gt;
-&lt;li&gt;Use &amp;ldquo;range&amp;rdquo; in the loops, e.g. &lt;code&gt;for i, r := range str&lt;/code&gt; instead of &lt;code&gt;for i := 0; i &amp;lt; len(str); i++ { if str[i] == ... }&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;If you are checking a specific character in the string/slice multiple times, assign it to a variable and use the variable instead. This will avoid indexing into the slice/string multiple times.&lt;/li&gt;
-&lt;li&gt;If there are multiple conditions in an &lt;code&gt;if&lt;/code&gt; statement, try to move (or add) the non-indexing checks to the front of the statement. This sometimes will help short circuit the checks and avoid the slice-indexing checks.&lt;/li&gt;
-&lt;/ol&gt;
-
-&lt;p&gt;One might question if this is worth optimizing, but like I said, I am trying to squeeze every oz of performance so 3.5% is still good for me. Unfornately I do know I won&amp;rsquo;t get 3.5% since I can&amp;rsquo;t remove every operation that index into slice/string.&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;3. Reduce Heap Allocation&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;This is true for all languages (where you can have some control of stack vs heap allocation), and it&amp;rsquo;s even more true in Go. Mainly in Go, if you allocate a new slice, Go will &amp;ldquo;zero&amp;rdquo; out the allocated memory. This is great from a safety perspective, but it does add to the overhead.&lt;/p&gt;
-
-&lt;p&gt;As an example, in the scanner I originally allocated a new &lt;em&gt;Sequence&lt;/em&gt; (slice of &lt;em&gt;Token&lt;/em&gt;) for every new message. However, when i changed it to re-use the existing slice, the performance increased by over 10%!&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;  $ go run ./sequence.go bench scan -i ../../data/sshd.all
-  Scanned 212897 messages in 0.87 secs, ~ 246027.12 msgs/sec
-
-  $ go run ./sequence.go bench scan -i ../../data/sshd.all
-  Scanned 212897 messages in 0.77 secs, ~ 275038.83 msgs/sec
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;The best thing to do is to run Go&amp;rsquo;s builtin CPU profiler, and look at the numbers for Go internal functions such as &lt;code&gt;runtime.makeslice&lt;/code&gt;, &lt;code&gt;runtime.markscan&lt;/code&gt;, and &lt;code&gt;runtime.memclr&lt;/code&gt;. Large percentages and numbers for these internal functions are dead giveaway that you are probably allocating too much stuff on the heap.&lt;/p&gt;
-
-&lt;p&gt;I religiously go through the SVGs generated from the Go profiler to help me identify hot spots where I can optimize.&lt;/p&gt;
-
-&lt;p&gt;Here&amp;rsquo;s also a couple of tips I picked up from the &lt;a href=&#34;https://groups.google.com/forum/#!topic/golang-nuts/baU4PZFyBQQ&#34;&gt;go-nuts mailing list&lt;/a&gt;:&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;Maps are bad&amp;ndash;even if they&amp;rsquo;re storing integers or other non-pointer structs. The implementation appears to have lots of pointers inside which must be evaluated and followed during mark/sweep GC.  Using structures with pointers magnifies the expense.&lt;/li&gt;
-&lt;li&gt;Slices are surprisingly bad (including strings and substrings of existing strings). A slice is a pointer to the backing array with a length and capacity. It would appear that the internal pointer that causes the trouble because GC wants to inspect it.&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;&lt;strong&gt;4. Reduce Data Copying&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;Data copying is expensive. It means the run time has to allocate new space and copy the data over. It&amp;rsquo;s even more expensive when you can&amp;rsquo;t have do &lt;code&gt;memcpy&lt;/code&gt; of a slice in Go like you can in C. Again, direct memory copying is not Go&amp;rsquo;s design goal. It is also much safer if you can prevent users from playing with memory directly too much. However, it is still a good idea to avoid any copying of data, whether it&amp;rsquo;s string or slice.&lt;/p&gt;
-
-&lt;p&gt;As much as I can, I try to do in place processing of the data. Every &lt;em&gt;Sequence&lt;/em&gt; is worked on locally and I try not to copy &lt;em&gt;Sequence&lt;/em&gt; or string unless I absolutely have to.&lt;/p&gt;
-
-&lt;p&gt;Unfortunately I don&amp;rsquo;t have any comparison numbers for this one, because I learned from &lt;a href=&#34;http://zhen.org/blog/surgemq-mqtt-message-queue-750k-mps/&#34;&gt;previous projects&lt;/a&gt; that I should avoid copying as much as possible.&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;5. Mind the Data Struture&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;If there&amp;rsquo;s one thing I learned over the past year, is to use the right data structure for the right job. I&amp;rsquo;ve written about other data structures such as &lt;a href=&#34;http://zhen.org/blog/ring-buffer-variable-length-low-latency-disruptor-style/&#34;&gt;ring buffer&lt;/a&gt;, &lt;a href=&#34;http://zhen.org/blog/benchmarking-bloom-filters-and-hash-functions-in-go/&#34;&gt;bloom filters&lt;/a&gt;, and &lt;a href=&#34;http://zhen.org/blog/go-skiplist/&#34;&gt;skiplist&lt;/a&gt; before.&lt;/p&gt;
-
-&lt;p&gt;However, &lt;a href=&#34;http://en.wikipedia.org/wiki/Finite-state_machine&#34;&gt;finite-state automata or machine&lt;/a&gt; is my latest love and I&amp;rsquo;ve been using it at various projects such as my &lt;a href=&#34;http://zhen.org/blog/generating-porter2-fsm-for-fun-and-performance/&#34;&gt;porter2&lt;/a&gt; and &lt;a href=&#34;https://github.com/surge/xparse/tree/master/etld&#34;&gt;effective TLD&lt;/a&gt;. Ok, technical FSM itself is not a data structure and can be implemented in different ways. In the &lt;code&gt;sequence&lt;/code&gt; project, I used both a tree representation as well as a bunch of switch-case statements. For the &lt;a href=&#34;http://zhen.org/blog/generating-porter2-fsm-for-fun-and-performance/&#34;&gt;porter2&lt;/a&gt; FSMs, I used switch-case to implement them.&lt;/p&gt;
-
-&lt;p&gt;Interestingly, swtich-case doesn&amp;rsquo;t always win. I tested the time FSM using both tree and switch-case implementations, and the tree actually won out. (Below, 1 is tree, 2 is switch-case.) So guess which one is checked in?&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;BenchmarkTimeStep1   2000000         696 ns/op
-BenchmarkTimeStep2   2000000         772 ns/op
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Writing this actually reminds me that in the parser, I am currently using a tree to parse the sequences. While parsing, there could be multiple paths that the sequence will match. Currently I walk all the matched paths fully, before choosing one that has the highest score. What I should do is to do a weighted walk, and always walk the highest score nodes first. If at the end I get a perfect score, I can just return that path and not have to walk the other paths. (Note to self, more parser optimization to do).&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;6. Avoid Interfaces If Possible&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;This is probably not a great advice to give to Go developers. Interface is probably one of the best Go features and everyone should learn to use it. However, if you want high performane, avoid interfaces as it provides additional layers of indirection. I don&amp;rsquo;t have performance numbers for the &lt;code&gt;sequence&lt;/code&gt; project since I tried to avoid interfaces in high performance areas from the start. However, previous in the &lt;a href=&#34;http://zhen.org/blog/ring-buffer-variable-length-low-latency-disruptor-style/&#34;&gt;ring buffer&lt;/a&gt; project, the version that uses interface is 140% slower than the version that didn&amp;rsquo;t.&lt;/p&gt;
-
-&lt;p&gt;I don&amp;rsquo;t have the direct link but someone on the go-nuts mailing list also said:&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;If you really want high performance, I would suggest avoiding interfaces and, in general, function calls like the plague, since they are quite expensive in Go (compared to C). We have implemented basically the same for our internal web framework (to be released some day) and we&amp;rsquo;re almost 4x faster than encoding/json without doing too much optimization. I&amp;rsquo;m sure we could make this even faster.&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;&lt;strong&gt;7. Find Ways to Short Circuit Checks&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;Find ways to quickly eliminate the need to run a section of the code has been tremendously helpful to improve performance. For example, here are a couple of place where I tried to do that.&lt;/p&gt;
-
-&lt;p&gt;In &lt;a href=&#34;https://github.com/strace/sequence/blob/master/scanner.go#L223&#34;&gt;this first example&lt;/a&gt;, I simply added &lt;code&gt;l == 1&lt;/code&gt; before the actual equality check of the string values. The first output is before the add, the second is after. The difference is about 2% performance increase.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;  $ go run ./sequence.go bench scan -i ../../data/sshd.all
-  Scanned 212897 messages in 0.78 secs, ~ 272303.79 msgs/sec
-
-  $ go run ./sequence.go bench scan -i ../../data/sshd.all
-  Scanned 212897 messages in 0.76 secs, ~ 278433.34 msgs/sec
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;In &lt;a href=&#34;https://github.com/strace/sequence/blob/master/scanner.go#L282&#34;&gt;the second example&lt;/a&gt;, I added a quick check to make sure the remaining string is at least as long as the shortest time format. If there&amp;rsquo;s not enough characters, then don&amp;rsquo;t run the time FSM. The performance difference is about 2.5%.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;  $ go run ./sequence.go bench scan -i ../../data/sshd.all
-  Scanned 212897 messages in 0.78 secs, ~ 272059.04 msgs/sec
-
-  $ go run ./sequence.go bench scan -i ../../data/sshd.all
-  Scanned 212897 messages in 0.76 secs, ~ 279388.47 msgs/sec
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;So by simply adding a couple of checks, I&amp;rsquo;ve increased perfromance by close to 5%.&lt;/p&gt;
-
-&lt;h3 id=&#34;conclusion:7cafd8125150d58e303b9851cd9816dd&#34;&gt;Conclusion&lt;/h3&gt;
-
-&lt;p&gt;At this point I think I have squeezed every bit of performance out of the scanner, to the extend of my knowledge. It&amp;rsquo;s performing relatively well and it&amp;rsquo;s given the parser plenty of head room to do other things. I hope some of these lessons are helpful to whatever you are doing.&lt;/p&gt;
-
-&lt;p&gt;Feel free to take a look at the &lt;a href=&#34;https://github.com/strace/sequence&#34;&gt;sequence&lt;/a&gt; project and try it out if you. If you have any issues/comments, please don&amp;rsquo;t hestiate to &lt;a href=&#34;https://github.com/strace/sequence/issues&#34;&gt;open a github issue&lt;/a&gt;.&lt;/p&gt;
 </description>
     </item>
     
