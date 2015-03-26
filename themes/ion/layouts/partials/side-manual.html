@@ -1,22 +1,13 @@
 						<div class="3u">
 							<section>
-								<h3>Overview</h3>
+							{{ range .Site.Menus.manual }}
+								{{ $cur := .Identifier }}
+								<h3>{{ $cur }}</h3>
 								<ul class="alt">
-								{{ range .Site.Taxonomies.series.overview.Pages }}
-									<li><a href="{{ .Permalink }}">{{ .LinkTitle }}</a> </li>
+								{{ range (index $.Site.Taxonomies.series .Identifier).Pages }}
+									<li><a href="{{ .Permalink }}">{{ .LinkTitle }}</a></li>
 								{{ end }}
 								</ul>
-								<h3>Sequence</h3>
-								<ul class="alt">
-								{{ range .Site.Taxonomies.series.sequence.Pages }}
-									<li><a href="{{ .Permalink }}">{{ .LinkTitle }}</a> </li>
-								{{ end }}
-								</ul>
-								<h3>Configuration</h3>
-								<ul class="alt">
-								{{ range .Site.Taxonomies.series.configuration.Pages }}
-									<li><a href="{{ .Permalink }}">{{ .LinkTitle }}</a> </li>
-								{{ end }}
-								</ul>
+							{{ end }}
 							</section>
 						</div>

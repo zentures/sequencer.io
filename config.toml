@@ -63,3 +63,19 @@ copyright = "Dataence, LLC. All Rights Reserved."
 	name = "Zen 3.1 Blog"
 	url = "http://zhen.org"
 	weight = 20
+
+[[menu.manual]]
+	name = "Overview"
+	identifier = "overview"
+	weight = 10
+
+[[menu.manual]]
+	name = "Sequence"
+	identifier = "sequence"
+	weight = 20
+
+[[menu.manual]]
+	name = "Configuration"
+	identifier = "configuration"
+	weight = 30
+
