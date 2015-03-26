@@ -763,6 +763,7 @@ id = %appname% time = &amp;quot; %msgtime% &amp;quot; fw = %apphost% priv = %int
 &lt;li&gt;%field:meta%&lt;/li&gt;
 &lt;li&gt;%type:meta%&lt;/li&gt;
 &lt;li&gt;%field:type:meta%&lt;/li&gt;
+&lt;li&gt;%field:-:until%&lt;/li&gt;
 &lt;/ul&gt;
 
 &lt;h4 id=&#34;using-the-meta-character:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &lt;code&gt;-&lt;/code&gt; Meta Character&lt;/h4&gt;
@@ -797,6 +798,25 @@ id = %appname% time = &amp;quot; %msgtime% &amp;quot; fw = %apphost% priv = %int
 &lt;/code&gt;&lt;/pre&gt;
 
 &lt;p&gt;In this example, part of the pattern is specified as &lt;code&gt;priv = %integer:*%&lt;/code&gt;. This means the value for &lt;code&gt;priv&lt;/code&gt; may or may not be there. This can also be written as &lt;code&gt;%:integer:*%&lt;/code&gt;.&lt;/p&gt;
+
+&lt;h4 id=&#34;using-the-until-format:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &amp;lsquo;until&amp;rsquo; Format&lt;/h4&gt;
+
+&lt;p&gt;A common use case is to consume all tokens until a specific token is hit. As an example, below is an example of a message that has some JSON-like text in the middle:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;2015-01-24T19:34:47.269-0500 [conn72800] query foo.bar query: { _id: { $gte: { ContactId: BinData(3, 6C764EA2DABCE241C3E) }, $lt: { ContactId: BinData(3, 6C764EA2DAB4D9B1C3F) } } } planSummary: IXSCAN { _id: 1 } ntoreturn:0 ntoskip:0 nscanned:12 nscannedObjects:12 keyUpdates:0 numYields:10 locks(micros) r:2733 nreturned:12 reslen:4726 102ms
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this example, we want to extract anything after &amp;ldquo;query:&amp;rdquo; and before &amp;ldquo;planSummary&amp;rdquo; into the &lt;em&gt;object&lt;/em&gt; field. To do that, we can write the following rule:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;%msgtime% [ %threadid% ] query %string% query : %object:-:plansummary% plansummary : %object::-%
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Notice the token &lt;code&gt;%object:-:plansummary%&lt;/code&gt;. What this says is that consume all the tokens from this point on, until the token &lt;code&gt;plansummary&lt;/code&gt; is found. So the end result is &lt;code&gt;object&lt;/code&gt; field will contain&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;{ _id: { $gte: { ContactId: BinData(3, 6C764EA2DABCE241C3E) }, $lt: { ContactId: BinData(3, 6C764EA2DAB4D9B1C3F) } } }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;After this token is done, the rest of the rule continues. Because this token does not consume the token &lt;code&gt;plansummary&lt;/code&gt;, we start the rule again from that.&lt;/p&gt;
 </description>
     </item>
     

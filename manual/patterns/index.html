@@ -191,6 +191,7 @@ id = %appname% time = &quot; %msgtime% &quot; fw = %apphost% priv = %integer% re
 <li>%field:meta%</li>
 <li>%type:meta%</li>
 <li>%field:type:meta%</li>
+<li>%field:-:until%</li>
 </ul>
 
 <h4 id="using-the-meta-character:14e2d0f08075306ded7951a1dfc5e3e0">Using the <code>-</code> Meta Character</h4>
@@ -225,6 +226,25 @@ id = %appname% time = &quot; %msgtime% &quot; fw = %apphost% priv = %integer:*% 
 </code></pre>
 
 <p>In this example, part of the pattern is specified as <code>priv = %integer:*%</code>. This means the value for <code>priv</code> may or may not be there. This can also be written as <code>%:integer:*%</code>.</p>
+
+<h4 id="using-the-until-format:14e2d0f08075306ded7951a1dfc5e3e0">Using the &lsquo;until&rsquo; Format</h4>
+
+<p>A common use case is to consume all tokens until a specific token is hit. As an example, below is an example of a message that has some JSON-like text in the middle:</p>
+
+<pre><code>2015-01-24T19:34:47.269-0500 [conn72800] query foo.bar query: { _id: { $gte: { ContactId: BinData(3, 6C764EA2DABCE241C3E) }, $lt: { ContactId: BinData(3, 6C764EA2DAB4D9B1C3F) } } } planSummary: IXSCAN { _id: 1 } ntoreturn:0 ntoskip:0 nscanned:12 nscannedObjects:12 keyUpdates:0 numYields:10 locks(micros) r:2733 nreturned:12 reslen:4726 102ms
+</code></pre>
+
+<p>In this example, we want to extract anything after &ldquo;query:&rdquo; and before &ldquo;planSummary&rdquo; into the <em>object</em> field. To do that, we can write the following rule:</p>
+
+<pre><code>%msgtime% [ %threadid% ] query %string% query : %object:-:plansummary% plansummary : %object::-%
+</code></pre>
+
+<p>Notice the token <code>%object:-:plansummary%</code>. What this says is that consume all the tokens from this point on, until the token <code>plansummary</code> is found. So the end result is <code>object</code> field will contain</p>
+
+<pre><code>{ _id: { $gte: { ContactId: BinData(3, 6C764EA2DABCE241C3E) }, $lt: { ContactId: BinData(3, 6C764EA2DAB4D9B1C3F) } } }
+</code></pre>
+
+<p>After this token is done, the rest of the rule continues. Because this token does not consume the token <code>plansummary</code>, we start the rule again from that.</p>
 
 
 							    <div style="text-align:center;margin-bottom:2em">
