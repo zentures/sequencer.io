@@ -2,20 +2,20 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Sequence</title>
-    <link>http://sequencer.io/</link>
+    <link>http://localhost:1313/</link>
     <description>Recent content on Sequence</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <copyright>Dataence, LLC. All Rights Reserved.</copyright>
     <lastBuildDate>Fri, 13 Feb 2015 01:03:08 -0800</lastBuildDate>
-    <atom:link href="http://sequencer.io/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="http://localhost:1313/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
       <title>Optimizing Go For the High Performance Log Scanner</title>
-      <link>http://sequencer.io/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</link>
+      <link>http://localhost:1313/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</link>
       <pubDate>Fri, 13 Feb 2015 01:03:08 -0800</pubDate>
       
-      <guid>http://sequencer.io/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</guid>
+      <guid>http://localhost:1313/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</guid>
       <description>
 
 &lt;h3 id=&#34;tl-dr:7cafd8125150d58e303b9851cd9816dd&#34;&gt;tl;dr&lt;/h3&gt;
@@ -313,13 +313,13 @@ BenchmarkTimeStep2   2000000         772 ns/op
     
     <item>
       <title>Introduction</title>
-      <link>http://sequencer.io/manual/introduction/</link>
+      <link>http://localhost:1313/manual/introduction/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://sequencer.io/manual/introduction/</guid>
+      <guid>http://localhost:1313/manual/introduction/</guid>
       <description>
 
-&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic05.jpg&#34; alt=&#34;Obligatory Log Picture&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://localhost:1313/images/pic05.jpg&#34; alt=&#34;Obligatory Log Picture&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;&lt;code&gt;sequence&lt;/code&gt; is a &lt;em&gt;high performance sequential log analyzer and parser&lt;/em&gt;. It &lt;em&gt;sequentially&lt;/em&gt; goes through a log message, &lt;em&gt;parses&lt;/em&gt; out the meaningful parts, without the use regular expressions. It can achieve &lt;em&gt;high performance&lt;/em&gt; parsing of &lt;strong&gt;100,000 - 200,000 messages per second (MPS)&lt;/strong&gt; without the need to separate parsing rules by log source type.&lt;/p&gt;
 
@@ -367,13 +367,13 @@ BenchmarkTimeStep2   2000000         772 ns/op
     
     <item>
       <title>Sequence</title>
-      <link>http://sequencer.io/manual/sequence/</link>
+      <link>http://localhost:1313/manual/sequence/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://sequencer.io/manual/sequence/</guid>
+      <guid>http://localhost:1313/manual/sequence/</guid>
       <description>
 
-&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/banner2.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://localhost:1313/images/banner2.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;A new approach taken by &lt;code&gt;sequence&lt;/code&gt; breaks the art of extracting meaningful information from log messages into three parts: scanning, analyzing and parsing.&lt;/p&gt;
 
@@ -438,10 +438,10 @@ bunch of sshd logs, averaging 98 bytes per message. The second is a Cisco ASA lo
     
     <item>
       <title>Scanner</title>
-      <link>http://sequencer.io/manual/scanner/</link>
+      <link>http://localhost:1313/manual/scanner/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://sequencer.io/manual/scanner/</guid>
+      <guid>http://localhost:1313/manual/scanner/</guid>
       <description>
 
 &lt;blockquote&gt;
@@ -460,7 +460,7 @@ bunch of sshd logs, averaging 98 bytes per message. The second is a Cisco ASA lo
 
 &lt;p&gt;Second, understanding the types of tokens will help the &lt;em&gt;parser&lt;/em&gt; distinguish between different log messages. If two messages are almost identical but one has a hostname and the other has an IP address, the &lt;em&gt;scanner&lt;/em&gt; can let the &lt;em&gt;parser&lt;/em&gt; know, and the &lt;em&gt;parser&lt;/em&gt; would the choose the correct pattern for the message.&lt;/p&gt;
 
-&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; scanners currently automatically recognizes &lt;a href=&#34;http://sequencer.io/manual/tokens&#34;&gt;9 different token types&lt;/a&gt; and &lt;a href=&#34;http://sequencer.io/manual/timeformats&#34;&gt;42 different time stamps&lt;/a&gt; .&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; scanners currently automatically recognizes &lt;a href=&#34;http://localhost:1313/manual/tokens&#34;&gt;9 different token types&lt;/a&gt; and &lt;a href=&#34;http://localhost:1313/manual/timeformats&#34;&gt;42 different time stamps&lt;/a&gt; .&lt;/p&gt;
 
 &lt;h3 id=&#34;scanners:adc8a12436d57d609395e4ca6900ba2b&#34;&gt;Scanners&lt;/h3&gt;
 
@@ -541,7 +541,7 @@ bunch of sshd logs, averaging 98 bytes per message. The second is a Cisco ASA lo
 &lt;p&gt;In the &lt;code&gt;sequence&lt;/code&gt; scanner, there are three FSMs: Time, HexString and General.&lt;/p&gt;
 
 &lt;ul&gt;
-&lt;li&gt;The Time FSM understands &lt;a href=&#34;http://sequencer.io/manual/timeformats&#34;&gt;42 different time stamps&lt;/a&gt;. This list of time formats are commonly seen in log messages. It is also fairly easy to add to this list if needed.&lt;/li&gt;
+&lt;li&gt;The Time FSM understands &lt;a href=&#34;http://localhost:1313/manual/timeformats&#34;&gt;42 different time stamps&lt;/a&gt;. This list of time formats are commonly seen in log messages. It is also fairly easy to add to this list if needed.&lt;/li&gt;
 &lt;li&gt;The HexString FSM is designed to understand IPv6 addresses (dead:beef:1234:5678:223:32ff:feb1:2e50 or f0f0:f::1), MAC addresses (00:04:c1:8b:d8:82), fingerprints or signatures (de:ad:be:ef:74:a6:bb:45:45:52:71:de:b2:12:34:56).&lt;/li&gt;
 &lt;li&gt;The General FSM that recognizes URLs, IPv4 addresses, and any literal or strings.&lt;/li&gt;
 &lt;/ul&gt;
@@ -608,13 +608,13 @@ bunch of sshd logs, averaging 98 bytes per message. The second is a Cisco ASA lo
     
     <item>
       <title>Analyzer</title>
-      <link>http://sequencer.io/manual/analyzer/</link>
+      <link>http://localhost:1313/manual/analyzer/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://sequencer.io/manual/analyzer/</guid>
+      <guid>http://localhost:1313/manual/analyzer/</guid>
       <description>
 
-&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic07.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://localhost:1313/images/pic07.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;This section will go through additional details of how the &lt;code&gt;sequence&lt;/code&gt; analyzer reduces 100 of 1000&amp;rsquo;s of raw log messages down to just 10&amp;rsquo;s of unique patterns, and then determining how to label the individual tokens. The goal is to reduce the time to write parsing rules by 50-75%.&lt;/p&gt;
 
@@ -793,20 +793,20 @@ object = [
     
     <item>
       <title>Parser</title>
-      <link>http://sequencer.io/manual/parser/</link>
+      <link>http://localhost:1313/manual/parser/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://sequencer.io/manual/parser/</guid>
+      <guid>http://localhost:1313/manual/parser/</guid>
       <description>&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;parser&lt;/em&gt; takes the rules generated by the analyzer (and updated/corrected by some human) as well as the &lt;em&gt;sequences&lt;/em&gt; returned by the &lt;em&gt;scanner&lt;/em&gt; for log messages, and will identify the matching rule. Based on the matching rule, the &lt;em&gt;parser&lt;/em&gt; will tag all the recognized tokens with a semantic tag, as defined by the user.&lt;/p&gt;
 </description>
     </item>
     
     <item>
       <title>Command</title>
-      <link>http://sequencer.io/manual/command/</link>
+      <link>http://localhost:1313/manual/command/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://sequencer.io/manual/command/</guid>
+      <guid>http://localhost:1313/manual/command/</guid>
       <description>
 
 &lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; command is developed to demonstrate the use of this package. You can find it in the &lt;code&gt;sequence&lt;/code&gt; directory. The &lt;code&gt;sequence&lt;/code&gt; command implements the &lt;em&gt;sequential semantic log parser&lt;/em&gt;.&lt;/p&gt;
@@ -960,23 +960,23 @@ Parsed 234815 messages in 1.56 secs, ~ 150769.68 msgs/sec
     
     <item>
       <title>Library</title>
-      <link>http://sequencer.io/manual/library/</link>
+      <link>http://localhost:1313/manual/library/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://sequencer.io/manual/library/</guid>
+      <guid>http://localhost:1313/manual/library/</guid>
       <description>&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;a href=&#34;https://github.com/trustpath/sequence&#34;&gt;library&lt;/a&gt; implements the concepts described in this manual.&lt;/p&gt;
 </description>
     </item>
     
     <item>
       <title>Patterns</title>
-      <link>http://sequencer.io/manual/patterns/</link>
+      <link>http://localhost:1313/manual/patterns/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://sequencer.io/manual/patterns/</guid>
+      <guid>http://localhost:1313/manual/patterns/</guid>
       <description>
 
-&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic08.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://localhost:1313/images/pic08.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;parser&lt;/em&gt; does not use regular expression. In fact, it won&amp;rsquo;t understand any regular expression in the patterns even if you put them there. What it does recognize is a sequential pattern that follows the same format as the message it self. For fields that the analyst wants to extract, a field token of the form %fieldname% is put in its place.&lt;/p&gt;
 
@@ -1123,10 +1123,10 @@ id = %appname% time = &amp;quot; %msgtime% &amp;quot; fw = %apphost% priv = %int
     
     <item>
       <title>Configuration</title>
-      <link>http://sequencer.io/manual/configuration/</link>
+      <link>http://localhost:1313/manual/configuration/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://sequencer.io/manual/configuration/</guid>
+      <guid>http://localhost:1313/manual/configuration/</guid>
       <description>&lt;pre&gt;&lt;code&gt;version = &amp;quot;0.1&amp;quot;
 
 timeFormats = [
@@ -1376,11 +1376,11 @@ fields = [
     
     <item>
       <title>Time Formats</title>
-      <link>http://sequencer.io/manual/timeformats/</link>
+      <link>http://localhost:1313/manual/timeformats/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://sequencer.io/manual/timeformats/</guid>
-      <description>&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic06.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+      <guid>http://localhost:1313/manual/timeformats/</guid>
+      <description>&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://localhost:1313/images/pic06.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;One of the most difficult task in log parsing is recognizing and understanding the different time formats. Syslog RFCs have defined a couple formats that the syslog servers abide to. However, there are many log messages out there that don&amp;rsquo;t use the two syslog time formats.&lt;/p&gt;
 
@@ -1625,11 +1625,11 @@ fields = [
     
     <item>
       <title>Predefined Fields</title>
-      <link>http://sequencer.io/manual/fields/</link>
+      <link>http://localhost:1313/manual/fields/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://sequencer.io/manual/fields/</guid>
-      <description>&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic04.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+      <guid>http://localhost:1313/manual/fields/</guid>
+      <description>&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://localhost:1313/images/pic04.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;The goal of any log parser is to extract meaningful parts from a log message and then semantically tag them so other tools can perform analysis on the tags and values. In &lt;code&gt;sequence&lt;/code&gt;, these tags are called &lt;em&gt;fields&lt;/em&gt;.&lt;/p&gt;
 
@@ -1645,11 +1645,11 @@ fields = [
 ]
 &lt;/code&gt;&lt;/pre&gt;
 
-&lt;p&gt;The field name can be any alphanumeric &lt;code&gt;a-zA-Z0-9_]&lt;/code&gt; string chosen by the user. The type can be any of the pre-defined &lt;a href=&#34;http://sequencer.io/manual/tokens&#34;&gt;token types&lt;/a&gt;. The type is considered to be the default type of the field. When a field is defined in a message pattern, if no type is defined in pattern, then the default type is used. This helps reduce the amount of typing analysts have to do.&lt;/p&gt;
+&lt;p&gt;The field name can be any alphanumeric &lt;code&gt;a-zA-Z0-9_]&lt;/code&gt; string chosen by the user. The type can be any of the pre-defined &lt;a href=&#34;http://localhost:1313/manual/tokens&#34;&gt;token types&lt;/a&gt;. The type is considered to be the default type of the field. When a field is defined in a message pattern, if no type is defined in pattern, then the default type is used. This helps reduce the amount of typing analysts have to do.&lt;/p&gt;
 
 &lt;p&gt;It&amp;rsquo;s highly recommended that all user defined fields are added to the end of the array, after the predefined fields. A comment explaning what it is and how it might be used is also highly recommended.&lt;/p&gt;
 
-&lt;p&gt;The following list of fields are predefined in the &lt;a href=&#34;http://sequencer.io/manual/config.md&#34;&gt;sequence.toml&lt;/a&gt; file.&lt;/p&gt;
+&lt;p&gt;The following list of fields are predefined in the &lt;a href=&#34;http://localhost:1313/manual/config.md&#34;&gt;sequence.toml&lt;/a&gt; file.&lt;/p&gt;
 
 &lt;table&gt;
 &lt;thead&gt;
@@ -1967,10 +1967,10 @@ fields = [
     
     <item>
       <title>Token Types</title>
-      <link>http://sequencer.io/manual/tokens/</link>
+      <link>http://localhost:1313/manual/tokens/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://sequencer.io/manual/tokens/</guid>
+      <guid>http://localhost:1313/manual/tokens/</guid>
       <description>&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;scanner&lt;/em&gt; will attempt to automatically recognize the following token types.&lt;/p&gt;
 
 &lt;table&gt;
@@ -1984,7 +1984,7 @@ fields = [
 &lt;tbody&gt;
 &lt;tr&gt;
 &lt;td&gt;time&lt;/td&gt;
-&lt;td&gt;timestamp, in the format listed in &lt;a href=&#34;http://sequencer.io/manual/timeformats/&#34;&gt;TimeFormats&lt;/a&gt;&lt;/td&gt;
+&lt;td&gt;timestamp, in the format listed in &lt;a href=&#34;http://localhost:1313/manual/timeformats/&#34;&gt;TimeFormats&lt;/a&gt;&lt;/td&gt;
 &lt;/tr&gt;
 
 &lt;tr&gt;

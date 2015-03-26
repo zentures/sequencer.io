@@ -2,20 +2,20 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Golang on Sequence</title>
-    <link>http://sequencer.io/categories/golang/</link>
+    <link>http://localhost:1313/categories/golang/</link>
     <description>Recent content in Golang on Sequence</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <copyright>Dataence, LLC. All Rights Reserved.</copyright>
     <lastBuildDate>Fri, 13 Feb 2015 01:03:08 -0800</lastBuildDate>
-    <atom:link href="http://sequencer.io/categories/golang/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="http://localhost:1313/categories/golang/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
       <title>Optimizing Go For the High Performance Log Scanner</title>
-      <link>http://sequencer.io/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</link>
+      <link>http://localhost:1313/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</link>
       <pubDate>Fri, 13 Feb 2015 01:03:08 -0800</pubDate>
       
-      <guid>http://sequencer.io/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</guid>
+      <guid>http://localhost:1313/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</guid>
       <description>
 
 &lt;h3 id=&#34;tl-dr:7cafd8125150d58e303b9851cd9816dd&#34;&gt;tl;dr&lt;/h3&gt;

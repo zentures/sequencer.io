@@ -2,73 +2,73 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
-    <loc>http://sequencer.io/</loc>
+    <loc>http://localhost:1313/</loc>
     <lastmod>2015-02-13T01:03:08-08:00</lastmod>
     <priority>0</priority>
   </url>
   
   <url>
-    <loc>http://sequencer.io/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</loc>
+    <loc>http://localhost:1313/blog/2015/02/optimizing-go-for-high-performance-log-scanner/</loc>
     <lastmod>2015-02-13T01:03:08-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequencer.io/manual/introduction/</loc>
+    <loc>http://localhost:1313/manual/introduction/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequencer.io/manual/sequence/</loc>
+    <loc>http://localhost:1313/manual/sequence/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequencer.io/manual/scanner/</loc>
+    <loc>http://localhost:1313/manual/scanner/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequencer.io/manual/analyzer/</loc>
+    <loc>http://localhost:1313/manual/analyzer/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequencer.io/manual/parser/</loc>
+    <loc>http://localhost:1313/manual/parser/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequencer.io/manual/command/</loc>
+    <loc>http://localhost:1313/manual/command/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequencer.io/manual/library/</loc>
+    <loc>http://localhost:1313/manual/library/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequencer.io/manual/patterns/</loc>
+    <loc>http://localhost:1313/manual/patterns/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequencer.io/manual/configuration/</loc>
+    <loc>http://localhost:1313/manual/configuration/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequencer.io/manual/timeformats/</loc>
+    <loc>http://localhost:1313/manual/timeformats/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequencer.io/manual/fields/</loc>
+    <loc>http://localhost:1313/manual/fields/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
   <url>
-    <loc>http://sequencer.io/manual/tokens/</loc>
+    <loc>http://localhost:1313/manual/tokens/</loc>
     <lastmod>2015-02-28T18:48:24-08:00</lastmod>
   </url>
   
