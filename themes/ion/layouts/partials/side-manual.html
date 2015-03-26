@@ -1,8 +1,7 @@
 						<div class="3u">
 							<section>
 							{{ range .Site.Menus.manual }}
-								{{ $cur := .Identifier }}
-								<h3>{{ $cur }}</h3>
+								<h3>{{ .Name }}</h3>
 								<ul class="alt">
 								{{ range (index $.Site.Taxonomies.series .Identifier).Pages }}
 									<li><a href="{{ .Permalink }}">{{ .LinkTitle }}</a></li>
