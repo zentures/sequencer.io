@@ -802,6 +802,16 @@ object = [
     </item>
     
     <item>
+      <title>Getting Started</title>
+      <link>http://sequencer.io/manual/library/</link>
+      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
+      
+      <guid>http://sequencer.io/manual/library/</guid>
+      <description>&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;a href=&#34;https://github.com/trustpath/sequence&#34;&gt;library&lt;/a&gt; implements the concepts described in this manual.&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
       <title>Command</title>
       <link>http://sequencer.io/manual/command/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
@@ -955,169 +965,6 @@ Parsed 212897 messages in 1.00 secs, ~ 212711.83 msgs/sec
 $ GOMAXPROCS=2 ./sequence bench -p ../../patterns/asa.txt -i ../../data/allasa.log -w 2
 Parsed 234815 messages in 1.56 secs, ~ 150769.68 msgs/sec
 &lt;/code&gt;&lt;/pre&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>Library</title>
-      <link>http://sequencer.io/manual/library/</link>
-      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
-      
-      <guid>http://sequencer.io/manual/library/</guid>
-      <description>&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;a href=&#34;https://github.com/trustpath/sequence&#34;&gt;library&lt;/a&gt; implements the concepts described in this manual.&lt;/p&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>Patterns</title>
-      <link>http://sequencer.io/manual/patterns/</link>
-      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
-      
-      <guid>http://sequencer.io/manual/patterns/</guid>
-      <description>
-
-&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic08.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;parser&lt;/em&gt; does not use regular expression. In fact, it won&amp;rsquo;t understand any regular expression in the patterns even if you put them there. What it does recognize is a sequential pattern that follows the same format as the message it self. For fields that the analyst wants to extract, a field token of the form %fieldname% is put in its place.&lt;/p&gt;
-
-&lt;p&gt;As an example, this is pattern that&amp;rsquo;s applied to the corresponding sudo message:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;jan 15 14:07:04 testserver sudo: pam_unix(sudo:auth): password failed
-
-%msgtime% %apphost% %appname% : pam_unix ( sudo : %action% ) : %method% %status%
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;In this example, we are tagging six different tokens of the message with semantic fields, including:&lt;/p&gt;
-
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;Field&lt;/th&gt;
-&lt;th&gt;Value&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;%msgtime%&lt;/td&gt;
-&lt;td&gt;jan 15 14:07:04&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;%apphost%&lt;/td&gt;
-&lt;td&gt;testserver&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;%appname%&lt;/td&gt;
-&lt;td&gt;sudo&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;%action%&lt;/td&gt;
-&lt;td&gt;auth&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;%method%&lt;/td&gt;
-&lt;td&gt;password&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;%status%&lt;/td&gt;
-&lt;td&gt;failed&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-
-&lt;p&gt;Note that it is not required to add spaces before and after the parenthesis. The parser uses the same scanner for message patters as it uses for the messages themselves, so the parenthesis will be extracted as separate tokens in both cases. It just seems to be more clear to have the spaces.&lt;/p&gt;
-
-&lt;p&gt;Here&amp;rsquo;s another longer example (which you may have to horizontall scroll to see):&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;id=firewall time=&amp;quot;2005-03-18 14:01:46&amp;quot; fw=TOPSEC priv=6 recorder=kernel type=conn policy=414 proto=TCP rule=accept src=61.167.71.244 sport=35223 dst=210.82.119.211 dport=25 duration=27 inpkt=37 outpkt=39 sent=1770 rcvd=20926 smac=00:04:c1:8b:d8:82 dmac=00:0b:5f:b2:1d:80
-
-id = %appname% time = &amp;quot; %msgtime% &amp;quot; fw = %apphost% priv = %integer% recorder = %string% type = %string% policy = %policyid% proto = %protocol% rule = %status% src = %srcip% sport = %srcport% dst = %dstip% dport = %dstport% duration = %integer% inpkt = %pktsrecv% outpkt = %pktssent% sent = %bytessent% rcvd = %bytesrecv% smac = %srcmac% dmac = %dstmac%
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h3 id=&#34;field-tokens:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Field Tokens&lt;/h3&gt;
-
-&lt;p&gt;A field token is of the format &amp;ldquo;%field:type:meta%&amp;rdquo;:&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;field is the name of the field&lt;/li&gt;
-&lt;li&gt;type is the token type of the field&lt;/li&gt;
-&lt;li&gt;meta is one of the following meta characters -, +, *, where
-
-&lt;ul&gt;
-&lt;li&gt;&amp;rdquo;-&amp;rdquo; means the rest of the tokens&lt;/li&gt;
-&lt;li&gt;&amp;rdquo;+&amp;rdquo; means one or more of this token&lt;/li&gt;
-&lt;li&gt;&amp;ldquo;*&amp;rdquo; means zero or more of this token&lt;/li&gt;
-&lt;/ul&gt;&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;A field token can take different formats. The supported formats are:&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;%field%&lt;/li&gt;
-&lt;li&gt;%type%&lt;/li&gt;
-&lt;li&gt;%field:type%&lt;/li&gt;
-&lt;li&gt;%field:meta%&lt;/li&gt;
-&lt;li&gt;%type:meta%&lt;/li&gt;
-&lt;li&gt;%field:type:meta%&lt;/li&gt;
-&lt;li&gt;%field:-:until%&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;h4 id=&#34;using-the-meta-character:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &lt;code&gt;-&lt;/code&gt; Meta Character&lt;/h4&gt;
-
-&lt;p&gt;Below is an example of how to use the &lt;code&gt;-&lt;/code&gt; meta character:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;jan 14 10:15:56 testserver sudo:    gonner : tty=pts/3 ; pwd=/home/gonner ; user=root ; command=/bin/su - ustream
-
-%msgtime% %apphost% %appname% : %srcuser% : tty = %string% ; pwd = %string% ; user = %dstuser% ; command = %method:-%
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;In this example, most field tokens are specified in the %field% format, except for the last one. The last token, &lt;code&gt;%method:-&lt;/code&gt;, specifies that the &lt;code&gt;%method%&lt;/code&gt; token should consume the rest of the tokens. This means the &lt;code&gt;%method%&lt;/code&gt; token will have the value of &lt;code&gt;/bin/su - ustream&lt;/code&gt;. This field token can also be specified as &lt;code&gt;%method::-&lt;/code&gt;.&lt;/p&gt;
-
-&lt;h4 id=&#34;using-the-meta-character-1:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &lt;code&gt;+&lt;/code&gt; Meta Character&lt;/h4&gt;
-
-&lt;p&gt;Here&amp;rsquo;s an example of using the &lt;code&gt;+&lt;/code&gt; meta character:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;Feb  8 21:51:10 mail postfix/pipe[84059]: 440682230: to=&amp;lt;userB@company.office&amp;gt;, orig_to=&amp;lt;userB@company.biz&amp;gt;, relay=dovecot, delay=0.9, delays=0.87/0/0/0.03, dsn=2.0.0, status=sent (delivered via dovecot service)
-
-%msgtime% %apphost% %appname% [ %sessionid% ] : %msgid:integer% : to = &amp;lt; %srcemail% &amp;gt; , orig_to = &amp;lt; %string% &amp;gt; , relay = %string% , delay = %float% , delays = %string% , dsn = %string% , status = %status% ( %reason::+% )
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;In this example, the 2nd to the last token is &lt;code&gt;%reason::+%&lt;/code&gt;. This means the &lt;code&gt;%reason%&lt;/code&gt; field token will consume one or more tokens until the close parenthesis. This can also be written as &lt;code&gt;%reason:+%&lt;/code&gt;.&lt;/p&gt;
-
-&lt;h4 id=&#34;using-the-meta-character-2:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &lt;code&gt;*&lt;/code&gt; Meta Character&lt;/h4&gt;
-
-&lt;p&gt;Here&amp;rsquo;s an example of using the &lt;code&gt;*&lt;/code&gt; meta character:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;id=firewall time=&amp;quot;2005-03-18 14:01:46&amp;quot; fw=TOPSEC priv= recorder=kernel type=conn policy=414 proto=TCP rule=accept src=61.167.71.244 sport=35223 dst=210.82.119.211 dport=25 duration=27 inpkt=37 outpkt=39 sent=1770 rcvd=20926 smac=00:04:c1:8b:d8:82 dmac=00:0b:5f:b2:1d:80
-
-id = %appname% time = &amp;quot; %msgtime% &amp;quot; fw = %apphost% priv = %integer:*% recorder = %string% type = %string% policy = %policyid% proto = %protocol% rule = %status% src = %srcip% sport = %srcport% dst = %dstip% dport = %dstport% duration = %integer% inpkt = %pktsrecv% outpkt = %pktssent% sent = %bytessent% rcvd = %bytesrecv% smac = %srcmac% dmac = %dstmac%
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;In this example, part of the pattern is specified as &lt;code&gt;priv = %integer:*%&lt;/code&gt;. This means the value for &lt;code&gt;priv&lt;/code&gt; may or may not be there. This can also be written as &lt;code&gt;%:integer:*%&lt;/code&gt;.&lt;/p&gt;
-
-&lt;h4 id=&#34;using-the-until-format:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &amp;lsquo;until&amp;rsquo; Format&lt;/h4&gt;
-
-&lt;p&gt;A common use case is to consume all tokens until a specific token is hit. As an example, below is an example of a message that has some JSON-like text in the middle:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;2015-01-24T19:34:47.269-0500 [conn72800] query foo.bar query: { _id: { $gte: { ContactId: BinData(3, 6C764EA2DABCE241C3E) }, $lt: { ContactId: BinData(3, 6C764EA2DAB4D9B1C3F) } } } planSummary: IXSCAN { _id: 1 } ntoreturn:0 ntoskip:0 nscanned:12 nscannedObjects:12 keyUpdates:0 numYields:10 locks(micros) r:2733 nreturned:12 reslen:4726 102ms
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;In this example, we want to extract anything after &amp;ldquo;query:&amp;rdquo; and before &amp;ldquo;planSummary&amp;rdquo; into the &lt;em&gt;object&lt;/em&gt; field. To do that, we can write the following rule:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;%msgtime% [ %threadid% ] query %string% query : %object:-:plansummary% plansummary : %object::-%
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Notice the token &lt;code&gt;%object:-:plansummary%&lt;/code&gt;. What this says is that consume all the tokens from this point on, until the token &lt;code&gt;plansummary&lt;/code&gt; is found. So the end result is &lt;code&gt;object&lt;/code&gt; field will contain&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;{ _id: { $gte: { ContactId: BinData(3, 6C764EA2DABCE241C3E) }, $lt: { ContactId: BinData(3, 6C764EA2DAB4D9B1C3F) } } }
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;After this token is done, the rest of the rule continues. Because this token does not consume the token &lt;code&gt;plansummary&lt;/code&gt;, we start the rule again from that.&lt;/p&gt;
 </description>
     </item>
     
@@ -1371,6 +1218,159 @@ fields = [
         &amp;quot;http/1.1&amp;quot;
     ]
 &lt;/code&gt;&lt;/pre&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Patterns</title>
+      <link>http://sequencer.io/manual/patterns/</link>
+      <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
+      
+      <guid>http://sequencer.io/manual/patterns/</guid>
+      <description>
+
+&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic08.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;parser&lt;/em&gt; does not use regular expression. In fact, it won&amp;rsquo;t understand any regular expression in the patterns even if you put them there. What it does recognize is a sequential pattern that follows the same format as the message it self. For fields that the analyst wants to extract, a field token of the form %fieldname% is put in its place.&lt;/p&gt;
+
+&lt;p&gt;As an example, this is pattern that&amp;rsquo;s applied to the corresponding sudo message:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;jan 15 14:07:04 testserver sudo: pam_unix(sudo:auth): password failed
+
+%msgtime% %apphost% %appname% : pam_unix ( sudo : %action% ) : %method% %status%
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this example, we are tagging six different tokens of the message with semantic fields, including:&lt;/p&gt;
+
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Field&lt;/th&gt;
+&lt;th&gt;Value&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;%msgtime%&lt;/td&gt;
+&lt;td&gt;jan 15 14:07:04&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;%apphost%&lt;/td&gt;
+&lt;td&gt;testserver&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;%appname%&lt;/td&gt;
+&lt;td&gt;sudo&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;%action%&lt;/td&gt;
+&lt;td&gt;auth&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;%method%&lt;/td&gt;
+&lt;td&gt;password&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;%status%&lt;/td&gt;
+&lt;td&gt;failed&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;Note that it is not required to add spaces before and after the parenthesis. The parser uses the same scanner for message patters as it uses for the messages themselves, so the parenthesis will be extracted as separate tokens in both cases. It just seems to be more clear to have the spaces.&lt;/p&gt;
+
+&lt;p&gt;Here&amp;rsquo;s another longer example (which you may have to horizontall scroll to see):&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;id=firewall time=&amp;quot;2005-03-18 14:01:46&amp;quot; fw=TOPSEC priv=6 recorder=kernel type=conn policy=414 proto=TCP rule=accept src=61.167.71.244 sport=35223 dst=210.82.119.211 dport=25 duration=27 inpkt=37 outpkt=39 sent=1770 rcvd=20926 smac=00:04:c1:8b:d8:82 dmac=00:0b:5f:b2:1d:80
+
+id = %appname% time = &amp;quot; %msgtime% &amp;quot; fw = %apphost% priv = %integer% recorder = %string% type = %string% policy = %policyid% proto = %protocol% rule = %status% src = %srcip% sport = %srcport% dst = %dstip% dport = %dstport% duration = %integer% inpkt = %pktsrecv% outpkt = %pktssent% sent = %bytessent% rcvd = %bytesrecv% smac = %srcmac% dmac = %dstmac%
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;field-tokens:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Field Tokens&lt;/h3&gt;
+
+&lt;p&gt;A field token is of the format &amp;ldquo;%field:type:meta%&amp;rdquo;:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;field is the name of the field&lt;/li&gt;
+&lt;li&gt;type is the token type of the field&lt;/li&gt;
+&lt;li&gt;meta is one of the following meta characters -, +, *, where
+
+&lt;ul&gt;
+&lt;li&gt;&amp;rdquo;-&amp;rdquo; means the rest of the tokens&lt;/li&gt;
+&lt;li&gt;&amp;rdquo;+&amp;rdquo; means one or more of this token&lt;/li&gt;
+&lt;li&gt;&amp;ldquo;*&amp;rdquo; means zero or more of this token&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;A field token can take different formats. The supported formats are:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;%field%&lt;/li&gt;
+&lt;li&gt;%type%&lt;/li&gt;
+&lt;li&gt;%field:type%&lt;/li&gt;
+&lt;li&gt;%field:meta%&lt;/li&gt;
+&lt;li&gt;%type:meta%&lt;/li&gt;
+&lt;li&gt;%field:type:meta%&lt;/li&gt;
+&lt;li&gt;%field:-:until%&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h4 id=&#34;using-the-meta-character:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &lt;code&gt;-&lt;/code&gt; Meta Character&lt;/h4&gt;
+
+&lt;p&gt;Below is an example of how to use the &lt;code&gt;-&lt;/code&gt; meta character:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;jan 14 10:15:56 testserver sudo:    gonner : tty=pts/3 ; pwd=/home/gonner ; user=root ; command=/bin/su - ustream
+
+%msgtime% %apphost% %appname% : %srcuser% : tty = %string% ; pwd = %string% ; user = %dstuser% ; command = %method:-%
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this example, most field tokens are specified in the %field% format, except for the last one. The last token, &lt;code&gt;%method:-&lt;/code&gt;, specifies that the &lt;code&gt;%method%&lt;/code&gt; token should consume the rest of the tokens. This means the &lt;code&gt;%method%&lt;/code&gt; token will have the value of &lt;code&gt;/bin/su - ustream&lt;/code&gt;. This field token can also be specified as &lt;code&gt;%method::-&lt;/code&gt;.&lt;/p&gt;
+
+&lt;h4 id=&#34;using-the-meta-character-1:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &lt;code&gt;+&lt;/code&gt; Meta Character&lt;/h4&gt;
+
+&lt;p&gt;Here&amp;rsquo;s an example of using the &lt;code&gt;+&lt;/code&gt; meta character:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;Feb  8 21:51:10 mail postfix/pipe[84059]: 440682230: to=&amp;lt;userB@company.office&amp;gt;, orig_to=&amp;lt;userB@company.biz&amp;gt;, relay=dovecot, delay=0.9, delays=0.87/0/0/0.03, dsn=2.0.0, status=sent (delivered via dovecot service)
+
+%msgtime% %apphost% %appname% [ %sessionid% ] : %msgid:integer% : to = &amp;lt; %srcemail% &amp;gt; , orig_to = &amp;lt; %string% &amp;gt; , relay = %string% , delay = %float% , delays = %string% , dsn = %string% , status = %status% ( %reason::+% )
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this example, the 2nd to the last token is &lt;code&gt;%reason::+%&lt;/code&gt;. This means the &lt;code&gt;%reason%&lt;/code&gt; field token will consume one or more tokens until the close parenthesis. This can also be written as &lt;code&gt;%reason:+%&lt;/code&gt;.&lt;/p&gt;
+
+&lt;h4 id=&#34;using-the-meta-character-2:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &lt;code&gt;*&lt;/code&gt; Meta Character&lt;/h4&gt;
+
+&lt;p&gt;Here&amp;rsquo;s an example of using the &lt;code&gt;*&lt;/code&gt; meta character:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;id=firewall time=&amp;quot;2005-03-18 14:01:46&amp;quot; fw=TOPSEC priv= recorder=kernel type=conn policy=414 proto=TCP rule=accept src=61.167.71.244 sport=35223 dst=210.82.119.211 dport=25 duration=27 inpkt=37 outpkt=39 sent=1770 rcvd=20926 smac=00:04:c1:8b:d8:82 dmac=00:0b:5f:b2:1d:80
+
+id = %appname% time = &amp;quot; %msgtime% &amp;quot; fw = %apphost% priv = %integer:*% recorder = %string% type = %string% policy = %policyid% proto = %protocol% rule = %status% src = %srcip% sport = %srcport% dst = %dstip% dport = %dstport% duration = %integer% inpkt = %pktsrecv% outpkt = %pktssent% sent = %bytessent% rcvd = %bytesrecv% smac = %srcmac% dmac = %dstmac%
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this example, part of the pattern is specified as &lt;code&gt;priv = %integer:*%&lt;/code&gt;. This means the value for &lt;code&gt;priv&lt;/code&gt; may or may not be there. This can also be written as &lt;code&gt;%:integer:*%&lt;/code&gt;.&lt;/p&gt;
+
+&lt;h4 id=&#34;using-the-until-format:14e2d0f08075306ded7951a1dfc5e3e0&#34;&gt;Using the &amp;lsquo;until&amp;rsquo; Format&lt;/h4&gt;
+
+&lt;p&gt;A common use case is to consume all tokens until a specific token is hit. As an example, below is an example of a message that has some JSON-like text in the middle:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;2015-01-24T19:34:47.269-0500 [conn72800] query foo.bar query: { _id: { $gte: { ContactId: BinData(3, 6C764EA2DABCE241C3E) }, $lt: { ContactId: BinData(3, 6C764EA2DAB4D9B1C3F) } } } planSummary: IXSCAN { _id: 1 } ntoreturn:0 ntoskip:0 nscanned:12 nscannedObjects:12 keyUpdates:0 numYields:10 locks(micros) r:2733 nreturned:12 reslen:4726 102ms
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this example, we want to extract anything after &amp;ldquo;query:&amp;rdquo; and before &amp;ldquo;planSummary&amp;rdquo; into the &lt;em&gt;object&lt;/em&gt; field. To do that, we can write the following rule:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;%msgtime% [ %threadid% ] query %string% query : %object:-:plansummary% plansummary : %object::-%
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Notice the token &lt;code&gt;%object:-:plansummary%&lt;/code&gt;. What this says is that consume all the tokens from this point on, until the token &lt;code&gt;plansummary&lt;/code&gt; is found. So the end result is &lt;code&gt;object&lt;/code&gt; field will contain&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;{ _id: { $gte: { ContactId: BinData(3, 6C764EA2DABCE241C3E) }, $lt: { ContactId: BinData(3, 6C764EA2DAB4D9B1C3F) } } }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;After this token is done, the rest of the rule continues. Because this token does not consume the token &lt;code&gt;plansummary&lt;/code&gt;, we start the rule again from that.&lt;/p&gt;
 </description>
     </item>
     
