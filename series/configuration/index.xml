@@ -2,20 +2,20 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Configuration on Sequence</title>
-    <link>http://localhost:1313/series/configuration/</link>
+    <link>http://sequencer.io/series/configuration/</link>
     <description>Recent content in Configuration on Sequence</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <copyright>Dataence, LLC. All Rights Reserved.</copyright>
     <lastBuildDate>Sat, 28 Feb 2015 18:48:24 -0800</lastBuildDate>
-    <atom:link href="http://localhost:1313/series/configuration/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="http://sequencer.io/series/configuration/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
       <title>Configuration</title>
-      <link>http://localhost:1313/manual/configuration/</link>
+      <link>http://sequencer.io/manual/configuration/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://localhost:1313/manual/configuration/</guid>
+      <guid>http://sequencer.io/manual/configuration/</guid>
       <description>&lt;pre&gt;&lt;code&gt;version = &amp;quot;0.1&amp;quot;
 
 timeFormats = [
@@ -265,11 +265,11 @@ fields = [
     
     <item>
       <title>Predefined Fields</title>
-      <link>http://localhost:1313/manual/fields/</link>
+      <link>http://sequencer.io/manual/fields/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://localhost:1313/manual/fields/</guid>
-      <description>&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://localhost:1313/images/pic04.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+      <guid>http://sequencer.io/manual/fields/</guid>
+      <description>&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic04.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;The goal of any log parser is to extract meaningful parts from a log message and then semantically tag them so other tools can perform analysis on the tags and values. In &lt;code&gt;sequence&lt;/code&gt;, these tags are called &lt;em&gt;fields&lt;/em&gt;.&lt;/p&gt;
 
@@ -285,11 +285,11 @@ fields = [
 ]
 &lt;/code&gt;&lt;/pre&gt;
 
-&lt;p&gt;The field name can be any alphanumeric &lt;code&gt;a-zA-Z0-9_]&lt;/code&gt; string chosen by the user. The type can be any of the pre-defined &lt;a href=&#34;http://localhost:1313/manual/tokens&#34;&gt;token types&lt;/a&gt;. The type is considered to be the default type of the field. When a field is defined in a message pattern, if no type is defined in pattern, then the default type is used. This helps reduce the amount of typing analysts have to do.&lt;/p&gt;
+&lt;p&gt;The field name can be any alphanumeric &lt;code&gt;a-zA-Z0-9_]&lt;/code&gt; string chosen by the user. The type can be any of the pre-defined &lt;a href=&#34;http://sequencer.io/manual/tokens&#34;&gt;token types&lt;/a&gt;. The type is considered to be the default type of the field. When a field is defined in a message pattern, if no type is defined in pattern, then the default type is used. This helps reduce the amount of typing analysts have to do.&lt;/p&gt;
 
 &lt;p&gt;It&amp;rsquo;s highly recommended that all user defined fields are added to the end of the array, after the predefined fields. A comment explaning what it is and how it might be used is also highly recommended.&lt;/p&gt;
 
-&lt;p&gt;The following list of fields are predefined in the &lt;a href=&#34;http://localhost:1313/manual/config.md&#34;&gt;sequence.toml&lt;/a&gt; file.&lt;/p&gt;
+&lt;p&gt;The following list of fields are predefined in the &lt;a href=&#34;http://sequencer.io/manual/config.md&#34;&gt;sequence.toml&lt;/a&gt; file.&lt;/p&gt;
 
 &lt;table&gt;
 &lt;thead&gt;
@@ -607,11 +607,11 @@ fields = [
     
     <item>
       <title>Time Formats</title>
-      <link>http://localhost:1313/manual/timeformats/</link>
+      <link>http://sequencer.io/manual/timeformats/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://localhost:1313/manual/timeformats/</guid>
-      <description>&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://localhost:1313/images/pic06.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+      <guid>http://sequencer.io/manual/timeformats/</guid>
+      <description>&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic06.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;One of the most difficult task in log parsing is recognizing and understanding the different time formats. Syslog RFCs have defined a couple formats that the syslog servers abide to. However, there are many log messages out there that don&amp;rsquo;t use the two syslog time formats.&lt;/p&gt;
 
@@ -856,10 +856,10 @@ fields = [
     
     <item>
       <title>Token Types</title>
-      <link>http://localhost:1313/manual/tokens/</link>
+      <link>http://sequencer.io/manual/tokens/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://localhost:1313/manual/tokens/</guid>
+      <guid>http://sequencer.io/manual/tokens/</guid>
       <description>&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;scanner&lt;/em&gt; will attempt to automatically recognize the following token types.&lt;/p&gt;
 
 &lt;table&gt;
@@ -873,7 +873,7 @@ fields = [
 &lt;tbody&gt;
 &lt;tr&gt;
 &lt;td&gt;time&lt;/td&gt;
-&lt;td&gt;timestamp, in the format listed in &lt;a href=&#34;http://localhost:1313/manual/timeformats/&#34;&gt;TimeFormats&lt;/a&gt;&lt;/td&gt;
+&lt;td&gt;timestamp, in the format listed in &lt;a href=&#34;http://sequencer.io/manual/timeformats/&#34;&gt;TimeFormats&lt;/a&gt;&lt;/td&gt;
 &lt;/tr&gt;
 
 &lt;tr&gt;

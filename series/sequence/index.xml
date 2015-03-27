@@ -2,20 +2,20 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Sequence on Sequence</title>
-    <link>http://localhost:1313/series/sequence/</link>
+    <link>http://sequencer.io/series/sequence/</link>
     <description>Recent content in Sequence on Sequence</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <copyright>Dataence, LLC. All Rights Reserved.</copyright>
     <lastBuildDate>Sat, 28 Feb 2015 18:48:24 -0800</lastBuildDate>
-    <atom:link href="http://localhost:1313/series/sequence/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="http://sequencer.io/series/sequence/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
       <title>Command</title>
-      <link>http://localhost:1313/manual/command/</link>
+      <link>http://sequencer.io/manual/command/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://localhost:1313/manual/command/</guid>
+      <guid>http://sequencer.io/manual/command/</guid>
       <description>
 
 &lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; command is developed to demonstrate the use of this package. You can find it in the &lt;code&gt;sequence&lt;/code&gt; directory. The &lt;code&gt;sequence&lt;/code&gt; command implements the &lt;em&gt;sequential semantic log parser&lt;/em&gt;.&lt;/p&gt;
@@ -169,23 +169,23 @@ Parsed 234815 messages in 1.56 secs, ~ 150769.68 msgs/sec
     
     <item>
       <title>Library</title>
-      <link>http://localhost:1313/manual/library/</link>
+      <link>http://sequencer.io/manual/library/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://localhost:1313/manual/library/</guid>
+      <guid>http://sequencer.io/manual/library/</guid>
       <description>&lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;a href=&#34;https://github.com/trustpath/sequence&#34;&gt;library&lt;/a&gt; implements the concepts described in this manual.&lt;/p&gt;
 </description>
     </item>
     
     <item>
       <title>Patterns</title>
-      <link>http://localhost:1313/manual/patterns/</link>
+      <link>http://sequencer.io/manual/patterns/</link>
       <pubDate>Sat, 28 Feb 2015 18:48:24 -0800</pubDate>
       
-      <guid>http://localhost:1313/manual/patterns/</guid>
+      <guid>http://sequencer.io/manual/patterns/</guid>
       <description>
 
-&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://localhost:1313/images/pic08.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href=&#34;#&#34; class=&#34;image fit&#34;&gt;&lt;img src=&#34;http://sequencer.io/images/pic08.jpg&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;The &lt;code&gt;sequence&lt;/code&gt; &lt;em&gt;parser&lt;/em&gt; does not use regular expression. In fact, it won&amp;rsquo;t understand any regular expression in the patterns even if you put them there. What it does recognize is a sequential pattern that follows the same format as the message it self. For fields that the analyst wants to extract, a field token of the form %fieldname% is put in its place.&lt;/p&gt;
 
