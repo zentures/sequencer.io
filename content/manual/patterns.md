@@ -1,9 +1,9 @@
 +++
 date = "2015-02-28T18:48:24-08:00"
 title = "Patterns"
-weight = 80
-series_weight = 30
-series = [ "sequence" ]
+weight = 90
+series_weight = 40
+series = [ "library" ]
 +++
 
 <a href="#" class="image fit"><img src="/images/pic08.jpg" alt="" /></a>

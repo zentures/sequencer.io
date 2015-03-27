@@ -70,12 +70,6 @@ copyright = "Dataence, LLC. All Rights Reserved."
 	weight = 10
 
 [[menu.manual]]
-	name = "Sequence"
-	identifier = "sequence"
+	name = "Library"
+	identifier = "library"
 	weight = 20
-
-[[menu.manual]]
-	name = "Configuration"
-	identifier = "configuration"
-	weight = 30
-

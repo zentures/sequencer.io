@@ -1,9 +1,9 @@
 +++
 date = "2015-02-28T18:48:24-08:00"
 title = "Command"
-weight = 60
-series_weight = 10
-series = [ "sequence" ]
+weight = 70
+series_weight = 20
+series = [ "library" ]
 +++
 
 The `sequence` command is developed to demonstrate the use of this package. You can find it in the `sequence` directory. The `sequence` command implements the _sequential semantic log parser_.
